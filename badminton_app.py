@@ -1,93 +1,119 @@
 import streamlit as st
 import string
+import random
 
-st.set_page_config(layout="centered")
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(
+    page_title="Badminton Tournament Manager",
+    layout="centered"
+)
 
-# ---------- CUSTOM COLORS ----------
+# ---------------- STYLING ----------------
 st.markdown("""
 <style>
+
+/* Title */
 .main-title {
-    font-size: 32px;
-    font-weight: bold;
-    color: #0E4C92;
+    font-size: 24px;
+    font-weight: 700;
+    text-align: center;
+    color: #1a73e8;
+    margin-bottom: 20px;
 }
 
+/* Round Header */
 .round-title {
-    background-color: #0E4C92;
-    color: white;
-    padding: 8px 12px;
-    border-radius: 8px;
-    margin-top: 10px;
-}
-
-.match-card {
-    border: 2px solid #d9e3f0;
-    border-radius: 10px;
-    padding: 12px;
-    margin-bottom: 12px;
-    background-color: #f8fbff;
-}
-
-.team-name {
-    font-weight: bold;
-    color: #003366;
-    font-size: 18px;
-}
-
-.winner-box {
-    background-color: #d4edda;
-    color: #155724;
-    padding: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+    background: linear-gradient(to right, #0E4C92, #1a73e8);
+    padding: 6px 10px;
     border-radius: 6px;
-    margin-top: 6px;
+    margin-top: 20px;
+    margin-bottom: 6px;
 }
+
+/* Thin separator */
+.separator {
+    height: 1px;
+    background-color: #1f2937;
+    margin-bottom: 12px;
+}
+
+/* Winner box */
+.winner-box {
+    background-color: #0B3D2E;
+    color: white;
+    padding: 8px;
+    border-radius: 8px;
+    margin-top: 8px;
+    font-weight: 700;
+    text-align: center;
+    font-size: 14px;
+}
+
+/* Player name */
+.player-name {
+    font-size: 12px;
+    opacity: 0.8;
+    margin-bottom: 6px;
+}
+
+.stButton > button {
+    width: 100%;
+    border-radius: 8px;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">Badminton Tournament Manager</div>', unsafe_allow_html=True)
 
-# ---------------- STEP 1 ----------------
-st.subheader("Step 1: Total Players")
-
-total_players = st.number_input(
-    "Enter total players (even number)",
-    min_value=2,
-    step=2
-)
+# ---------------- TOTAL PLAYERS ----------------
+total_players = st.number_input("Total Players (Even Number)", min_value=2, step=2)
 
 if total_players % 2 != 0:
-    st.warning("Players must be even")
+    st.warning("Players must be even.")
     st.stop()
 
 total_teams = total_players // 2
 team_names = [f"Team {string.ascii_uppercase[i]}" for i in range(total_teams)]
 
-# ---------------- INIT ----------------
-if "teams" not in st.session_state or len(st.session_state.teams) != total_teams:
+# ---------------- SAFE SESSION RESET ----------------
+if "team_count" not in st.session_state or st.session_state.team_count != total_teams:
+    st.session_state.team_count = total_teams
     st.session_state.teams = {
         team: {"players": ["", ""]} for team in team_names
     }
-
-if "scores" not in st.session_state:
     st.session_state.scores = {}
+    st.session_state.completed_matches = []
 
-# ---------------- STEP 2 ----------------
-st.subheader("Step 2: Enter Players")
+    colors = ["#FF6B6B", "#4D96FF", "#6BCB77", "#FFD93D",
+              "#845EC2", "#FF9671", "#00C9A7", "#C34A36"]
+    random.shuffle(colors)
+
+    st.session_state.team_colors = {
+        team: colors[i % len(colors)]
+        for i, team in enumerate(team_names)
+    }
+
+# ---------------- REFEREE MODE ----------------
+referee_mode = st.toggle("Referee Mode")
+
+# ---------------- ENTER PLAYERS ----------------
+st.subheader("Enter Players")
 
 for team in team_names:
-    st.markdown(f"### {team}")
     st.session_state.teams[team]["players"][0] = st.text_input(
-        "Player 1", key=f"{team}_p1"
+        f"{team} Player 1", key=f"{team}_p1"
     )
     st.session_state.teams[team]["players"][1] = st.text_input(
-        "Player 2", key=f"{team}_p2"
+        f"{team} Player 2", key=f"{team}_p2"
     )
-    st.divider()
 
 # ---------------- ROUND ROBIN ----------------
 def generate_round_robin(teams):
     teams = teams[:]
-
     if len(teams) % 2 == 1:
         teams.append("BYE")
 
@@ -96,14 +122,11 @@ def generate_round_robin(teams):
 
     for _ in range(n - 1):
         pairs = []
-
         for i in range(n // 2):
             t1 = teams[i]
             t2 = teams[n - 1 - i]
-
             if t1 != "BYE" and t2 != "BYE":
                 pairs.append((t1, t2))
-
         rounds.append(pairs)
         teams = [teams[0]] + [teams[-1]] + teams[1:-1]
 
@@ -111,109 +134,120 @@ def generate_round_robin(teams):
 
 rounds = generate_round_robin(team_names)
 
-# ---------------- STEP 3 MATCHES ----------------
-st.subheader("Step 3: Round Robin Matches")
+# ---------------- LIVE LEADERBOARD ----------------
+st.subheader("Live Leaderboard")
 
-match_index = 0
-
-for r, matches in enumerate(rounds, start=1):
-
-    st.markdown(
-        f'<div class="round-title">Round {r}</div>',
-        unsafe_allow_html=True
-    )
-
-    for (t1, t2) in matches:
-
-        p1a, p1b = st.session_state.teams[t1]["players"]
-        p2a, p2b = st.session_state.teams[t2]["players"]
-
-        st.markdown('<div class="match-card">', unsafe_allow_html=True)
-
-        st.markdown(
-            f'<div class="team-name">{t1}</div>{p1a} & {p1b}',
-            unsafe_allow_html=True
-        )
-        st.markdown("VS")
-        st.markdown(
-            f'<div class="team-name">{t2}</div>{p2a} & {p2b}',
-            unsafe_allow_html=True
-        )
-
-        s1 = st.number_input(
-            f"{t1} Score",
-            min_value=0,
-            key=f"s1_{match_index}"
-        )
-
-        s2 = st.number_input(
-            f"{t2} Score",
-            min_value=0,
-            key=f"s2_{match_index}"
-        )
-
-        st.session_state.scores[(t1, t2)] = (s1, s2)
-
-        if s1 > s2:
-            st.markdown(
-                f'<div class="winner-box">Winner: {t1}</div>',
-                unsafe_allow_html=True
-            )
-        elif s2 > s1:
-            st.markdown(
-                f'<div class="winner-box">Winner: {t2}</div>',
-                unsafe_allow_html=True
-            )
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        match_index += 1
-
-# ---------------- CALCULATIONS ----------------
-run_rates = {team: 0 for team in team_names}
 wins = {team: 0 for team in team_names}
-losses = {team: 0 for team in team_names}
 points = {team: 0 for team in team_names}
+run_rate = {team: 0 for team in team_names}
 
 for (t1, t2), (s1, s2) in st.session_state.scores.items():
-
-    diff = s1 - s2
-    run_rates[t1] += diff
-    run_rates[t2] -= diff
+    run_rate[t1] += s1 - s2
+    run_rate[t2] += s2 - s1
 
     if s1 > s2:
         wins[t1] += 1
-        losses[t2] += 1
         points[t1] += 2
     elif s2 > s1:
         wins[t2] += 1
-        losses[t1] += 1
         points[t2] += 2
 
-# ---------------- POINTS TABLE ----------------
-st.subheader("Points Table")
-
-table_data = []
-
+table = []
 for team in team_names:
-    table_data.append({
+    table.append({
         "Team": team,
         "Wins": wins[team],
-        "Losses": losses[team],
         "Points": points[team],
-        "Run Rate": run_rates[team]
+        "Run Rate": run_rate[team]
     })
 
-table_data = sorted(
-    table_data,
-    key=lambda x: (x["Points"], x["Run Rate"]),
-    reverse=True
-)
+table = sorted(table, key=lambda x: (x["Points"], x["Run Rate"]), reverse=True)
+st.table(table)
 
-st.table(table_data)
+# ---------------- MATCHES ----------------
+st.subheader("Matches")
 
-# ---------------- FINAL MATCH ----------------
+match_order = [m for round_matches in rounds for m in round_matches]
+match_counter = 0
+
+for r, matches in enumerate(rounds, start=1):
+
+    st.markdown(f'<div class="round-title">Round {r}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="separator"></div>', unsafe_allow_html=True)
+
+    for (t1, t2) in matches:
+
+        match_key = (t1, t2)
+        is_completed = match_key in st.session_state.completed_matches
+        is_next = len(st.session_state.completed_matches) == match_order.index(match_key)
+
+        with st.container():
+
+            color1 = st.session_state.team_colors[t1]
+            color2 = st.session_state.team_colors[t2]
+
+            p1a, p1b = st.session_state.teams[t1]["players"]
+            p2a, p2b = st.session_state.teams[t2]["players"]
+
+            st.markdown(
+                f"<div style='color:{color1}; font-weight:600'>{t1}</div>"
+                f"<div class='player-name'>{p1a} & {p1b}</div>",
+                unsafe_allow_html=True
+            )
+
+            s1 = st.text_input(
+                "Score",
+                key=f"s1_{match_counter}",
+                disabled=not is_next or (referee_mode and is_completed)
+            )
+
+            st.markdown(
+                f"<div style='color:{color2}; font-weight:600'>{t2}</div>"
+                f"<div class='player-name'>{p2a} & {p2b}</div>",
+                unsafe_allow_html=True
+            )
+
+            s2 = st.text_input(
+                "Score ",
+                key=f"s2_{match_counter}",
+                disabled=not is_next or (referee_mode and is_completed)
+            )
+
+            if not is_completed and is_next:
+                if st.button("Submit Result", key=f"submit_{match_counter}"):
+
+                    if s1.isdigit() and s2.isdigit():
+                        s1_int = int(s1)
+                        s2_int = int(s2)
+
+                        st.session_state.scores[match_key] = (s1_int, s2_int)
+                        st.session_state.completed_matches.append(match_key)
+
+                        if s1_int != s2_int:
+                            st.balloons()
+
+                        st.rerun()
+                    else:
+                        st.warning("Enter valid numeric scores")
+
+            if is_completed:
+                s1_saved, s2_saved = st.session_state.scores[match_key]
+
+                if s1_saved > s2_saved:
+                    st.markdown(
+                        f'<div class="winner-box">Winner: {t1}</div>',
+                        unsafe_allow_html=True
+                    )
+                elif s2_saved > s1_saved:
+                    st.markdown(
+                        f'<div class="winner-box">Winner: {t2}</div>',
+                        unsafe_allow_html=True
+                    )
+
+        match_counter += 1
+
+# ---------------- FINAL ----------------
 st.subheader("Final Match")
 
-if len(table_data) >= 2:
-    st.success(f"{table_data[0]['Team']} vs {table_data[1]['Team']}")
+if len(table) >= 2:
+    st.success(f"{table[0]['Team']} vs {table[1]['Team']}")
