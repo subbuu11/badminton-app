@@ -9,41 +9,33 @@ st.set_page_config(page_title="Badminton Tournament Manager", layout="centered")
 # ---------------- MOBILE RESPONSIVE FIX ----------------
 st.markdown("""
 <style>
-
-/* Reduce side padding on mobile */
 @media (max-width: 768px) {
     .block-container {
         padding-left: 1rem !important;
         padding-right: 1rem !important;
     }
 
-    /* Stack columns vertically */
     div[data-testid="column"] {
         flex: 1 1 100% !important;
         max-width: 100% !important;
     }
 
-    /* Full width buttons */
     .stButton > button {
         width: 100% !important;
     }
 
-    /* Number inputs full width */
     .stNumberInput {
         width: 100% !important;
     }
 
-    /* Responsive font sizes */
     h2 {
         font-size: 20px !important;
     }
 }
 
-/* Dataframe responsive */
 [data-testid="stDataFrame"] {
     width: 100% !important;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -51,17 +43,6 @@ st.markdown(
     "<h2 style='text-align:center; color:#1a73e8;'> Badminton Tournament Manager</h2>",
     unsafe_allow_html=True
 )
-
-# ---------------- AUTO SCROLL ----------------
-def scroll_top():
-    st.markdown(
-        """
-        <script>
-        window.scrollTo(0, 0);
-        </script>
-        """,
-        unsafe_allow_html=True
-    )
 
 # ---------------- TOTAL PLAYERS ----------------
 total_players = st.number_input("Total Players (Even Number)", min_value=2, step=2)
@@ -205,11 +186,37 @@ df = pd.DataFrame(table)
 st.subheader("Live Leaderboard")
 
 if len(df) > 0:
-    styled_df = df.style \
-        .background_gradient(subset=["Pts"], cmap="YlGn") \
-        .background_gradient(subset=["RR"], cmap="Blues")
-
     st.dataframe(df, use_container_width=True, hide_index=True)
+
+# ---------------- QUALIFICATION LOCK CHECK ----------------
+
+remaining_per_team = {t: 0 for t in team_names}
+
+for match in match_order:
+    if match not in st.session_state.completed_matches:
+        t1, t2 = match
+        remaining_per_team[t1] += 1
+        remaining_per_team[t2] += 1
+
+max_possible = {}
+for t in team_names:
+    max_possible[t] = points[t] + (remaining_per_team[t] * 2)
+
+if len(df) >= 2:
+    second_place_points = df.iloc[1]["Pts"]
+else:
+    second_place_points = 0
+
+still_possible = []
+
+for t in team_names:
+    if max_possible[t] >= second_place_points:
+        still_possible.append(t)
+
+if len(still_possible) == 2 and not st.session_state.final_mode:
+    st.session_state.final_mode = True
+    st.success("🏆 Top 2 Locked! League Stage Completed.")
+    st.rerun()
 
 # ---------------- MATCHES ----------------
 if total_teams >= 2:
@@ -284,4 +291,3 @@ if total_teams >= 2:
                 st.success(f"Winner: {winner}")
 
             match_counter += 1
-
