@@ -170,16 +170,27 @@ if len(df) > 0:
     )
 # ---------------- SMART SKIP ----------------
 def still_has_chance(table, total_rounds):
-    if len(table) < 2:
+
+    if len(table) < 3:
         return False
 
-    second_points = table[1]["Pts"]
+    second = table[1]
+    second_pts = second["Pts"]
+    second_rr = second["RR"]
+
+    MAX_SWING_PER_MATCH = 30  # adjust if needed
 
     for row in table[2:]:
-        remaining = total_rounds - row["P"]
-        max_possible = row["Pts"] + (remaining * 2)
 
-        if max_possible > second_points:
+        remaining = total_rounds - row["P"]
+
+        max_possible_pts = row["Pts"] + (remaining * 2)
+        max_possible_rr = row["RR"] + (remaining * MAX_SWING_PER_MATCH)
+
+        if max_possible_pts > second_pts:
+            return True
+
+        if max_possible_pts == second_pts and max_possible_rr > second_rr:
             return True
 
     return False
