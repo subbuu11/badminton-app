@@ -169,42 +169,18 @@ if len(df) > 0:
         hide_index=True
     )
 # ---------------- SMART SKIP ----------------
-def still_has_chance(table, total_rounds):
 
-    if len(table) < 3:
-        return False
+if (
+    total_teams >= 2
+    and not st.session_state.final_prompt
+    and not st.session_state.final_mode
+):
 
-    second = table[1]
-    second_pts = second["Pts"]
-    second_rr = second["RR"]
-
-    MAX_SWING_PER_MATCH = 30  # adjust if needed
-
-    for row in table[2:]:
-
-        remaining = total_rounds - row["P"]
-
-        max_possible_pts = row["Pts"] + (remaining * 2)
-        max_possible_rr = row["RR"] + (remaining * MAX_SWING_PER_MATCH)
-
-        if max_possible_pts > second_pts:
-            return True
-
-        if max_possible_pts == second_pts and max_possible_rr > second_rr:
-            return True
-
-    return False
-
-if total_teams >= 2:
     total_rounds = len(rounds)
-    matches_per_round = len(rounds[0])
-    matches_until_round4 = matches_per_round * (total_rounds - 1)
 
-    if (
-        len(st.session_state.completed_matches) == matches_until_round4
-        and not st.session_state.final_prompt
-        and not st.session_state.final_mode
-    ):
+    # Check once at least 1 match is played
+    if len(st.session_state.completed_matches) > 0:
+
         if not still_has_chance(table, total_rounds):
             st.session_state.final_prompt = True
             scroll_top()
@@ -385,4 +361,5 @@ if (
 
         st.success(f"Champion: {champion}")
         st.table(final_table)
+
 
