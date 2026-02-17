@@ -209,7 +209,7 @@ if len(df) > 0:
         .background_gradient(subset=["Pts"], cmap="YlGn") \
         .background_gradient(subset=["RR"], cmap="Blues")
 
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
 # ---------------- MATCHES ----------------
 if total_teams >= 2:
@@ -284,3 +284,4 @@ if total_teams >= 2:
                 st.success(f"Winner: {winner}")
 
             match_counter += 1
+
