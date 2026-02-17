@@ -6,6 +6,47 @@ import pandas as pd
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="Badminton Tournament Manager", layout="centered")
 
+# ---------------- MOBILE RESPONSIVE FIX ----------------
+st.markdown("""
+<style>
+
+/* Reduce side padding on mobile */
+@media (max-width: 768px) {
+    .block-container {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    /* Stack columns vertically */
+    div[data-testid="column"] {
+        flex: 1 1 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Full width buttons */
+    .stButton > button {
+        width: 100% !important;
+    }
+
+    /* Number inputs full width */
+    .stNumberInput {
+        width: 100% !important;
+    }
+
+    /* Responsive font sizes */
+    h2 {
+        font-size: 20px !important;
+    }
+}
+
+/* Dataframe responsive */
+[data-testid="stDataFrame"] {
+    width: 100% !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown(
     "<h2 style='text-align:center; color:#1a73e8;'> Badminton Tournament Manager</h2>",
     unsafe_allow_html=True
@@ -51,12 +92,12 @@ if "team_count" not in st.session_state or st.session_state.team_count != total_
     }
 
 # ---------------- CATEGORY INPUT ----------------
-st.subheader(" Player Categories")
+st.subheader("Player Categories")
 
 cat1 = st.text_area("Category 1 Players (one per line)")
 cat2 = st.text_area("Category 2 Players (one per line)")
 
-if st.button(" Randomize Teams"):
+if st.button("Randomize Teams", use_container_width=True):
 
     p1 = [x.strip() for x in cat1.split("\n") if x.strip()]
     p2 = [x.strip() for x in cat2.split("\n") if x.strip()]
@@ -75,11 +116,10 @@ if st.button(" Randomize Teams"):
         st.success("Teams randomized successfully!")
         st.rerun()
 
-# Stop if teams not created
 if len(st.session_state.teams) != total_teams:
     st.stop()
 
-# ---------------- PINNED TEAMS ----------------
+# ---------------- TEAMS ----------------
 st.subheader("Teams")
 
 for team in team_names:
@@ -92,8 +132,10 @@ for team in team_names:
                 border-radius:8px;
                 margin-bottom:6px;
                 border-left:6px solid {color};">
-        <b style="color:{color};">{team}</b><br>
+        <b style="color:{color}; font-size:clamp(14px,4vw,16px);">{team}</b><br>
+        <span style="font-size:clamp(12px,3.5vw,14px);">
         {p1} & {p2}
+        </span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -163,66 +205,16 @@ df = pd.DataFrame(table)
 st.subheader("Live Leaderboard")
 
 if len(df) > 0:
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True
-    )
-# ---------------- SMART SKIP ----------------
+    styled_df = df.style \
+        .background_gradient(subset=["Pts"], cmap="YlGn") \
+        .background_gradient(subset=["RR"], cmap="Blues")
 
-if (
-    total_teams >= 2
-    and not st.session_state.final_prompt
-    and not st.session_state.final_mode
-):
-
-    total_rounds = len(rounds)
-
-    # Check once at least 1 match is played
-    if len(st.session_state.completed_matches) > 0:
-
-        if not still_has_chance(table, total_rounds):
-            st.session_state.final_prompt = True
-            scroll_top()
-            st.rerun()
-
-# ---------------- POPUP ----------------
-if st.session_state.final_prompt:
-
-    scroll_top()
-
-    st.markdown("""
-    <div style="background:#7c2d12;
-                padding:20px;
-                border-radius:10px;
-                color:white;
-                text-align:center;
-                font-size:18px;">
-        ⚠️ Other teams cannot mathematically reach Top 2.<br><br>
-        Go to Final or Continue Round Robin?
-    </div>
-    """, unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("Go To Final"):
-            st.session_state.final_mode = True
-            st.session_state.final_prompt = False
-            st.rerun()
-
-    with col2:
-        if st.button("▶ Continue"):
-            st.session_state.final_prompt = False
-            st.rerun()
-
-    st.stop()
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 # ---------------- MATCHES ----------------
-if not st.session_state.final_mode and total_teams >= 2:
+if total_teams >= 2:
 
     st.subheader("Matches")
-
     match_counter = 0
 
     for r, matches in enumerate(rounds, start=1):
@@ -243,26 +235,24 @@ if not st.session_state.final_mode and total_teams >= 2:
             color1 = st.session_state.team_colors[t1]
             color2 = st.session_state.team_colors[t2]
 
-            # 👇 GET PLAYER NAMES
             p1a, p1b = st.session_state.teams[t1]["players"]
             p2a, p2b = st.session_state.teams[t2]["players"]
 
-            # 👇 DISPLAY TEAM + PLAYER NAMES
             st.markdown(f"""
             <div style="margin-bottom:8px;">
-                <b style="color:{color1}; font-size:16px;">{t1}</b>
-                <span style="font-size:13px; color:white;">
+                <b style="color:{color1}; font-size:clamp(14px,4vw,16px);">{t1}</b>
+                <span style="font-size:clamp(12px,3.5vw,14px);">
                 ({p1a} & {p1b})
                 </span>
                 &nbsp; <b>vs</b> &nbsp;
-                <b style="color:{color2}; font-size:16px;">{t2}</b>
-                <span style="font-size:13px; color:white;">
+                <b style="color:{color2}; font-size:clamp(14px,4vw,16px);">{t2}</b>
+                <span style="font-size:clamp(12px,3.5vw,14px);">
                 ({p2a} & {p2b})
                 </span>
             </div>
             """, unsafe_allow_html=True)
 
-            col1, col2 = st.columns(2)
+            col1, col2 = st.columns(2, gap="small")
 
             with col1:
                 s1 = st.number_input(
@@ -283,8 +273,7 @@ if not st.session_state.final_mode and total_teams >= 2:
                 )
 
             if not is_completed and is_next:
-                if st.button("Submit", key=f"submit_{match_counter}"):
-
+                if st.button("Submit", key=f"submit_{match_counter}", use_container_width=True):
                     st.session_state.scores[match_key] = (s1, s2)
                     st.session_state.completed_matches.append(match_key)
                     st.rerun()
@@ -295,71 +284,3 @@ if not st.session_state.final_mode and total_teams >= 2:
                 st.success(f"Winner: {winner}")
 
             match_counter += 1
-
-
-# ---------------- FINAL SECTION ----------------
-
-# Show final if user selected Go To Final
-# OR if all round robin matches are completed
-
-if (
-    total_teams >= 2
-    and (
-        st.session_state.final_mode
-        or (
-            len(match_order) > 0
-            and len(st.session_state.completed_matches) == len(match_order)
-        )
-    )
-):
-
-
-    st.subheader("FINAL MATCH")
-
-    if len(table) >= 2:
-        top1 = table[0]["Team"]
-        top2 = table[1]["Team"]
-    else:
-        st.stop()
-
-    st.markdown(f"### {top1} vs {top2}")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        final_score_1 = st.number_input(
-            f"{top1} Final Score",
-            min_value=0,
-            step=1,
-            key="final_score_1"
-        )
-
-    with col2:
-        final_score_2 = st.number_input(
-            f"{top2} Final Score",
-            min_value=0,
-            step=1,
-            key="final_score_2"
-        )
-
-    if st.button("Submit Final Result"):
-
-        if final_score_1 > final_score_2:
-            champion = top1
-        elif final_score_2 > final_score_1:
-            champion = top2
-        else:
-            champion = "Draw"
-
-        final_table = pd.DataFrame([{
-            "Team 1": top1,
-            "Score 1": final_score_1,
-            "Team 2": top2,
-            "Score 2": final_score_2,
-            "Champion": champion
-        }])
-
-        st.success(f"Champion: {champion}")
-        st.table(final_table)
-
-
