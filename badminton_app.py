@@ -163,12 +163,11 @@ df = pd.DataFrame(table)
 st.subheader("Live Leaderboard")
 
 if len(df) > 0:
-    styled_df = df.style \
-        .background_gradient(subset=["Pts"], cmap="YlGn") \
-        .background_gradient(subset=["RR"], cmap="Blues")
-
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
-
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True
+    )
 # ---------------- SMART SKIP ----------------
 def still_has_chance(table, total_rounds):
     if len(table) < 2:
