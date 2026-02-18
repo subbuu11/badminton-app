@@ -56,7 +56,6 @@ cat1 = st.text_area("Category 1 Players (one per line)")
 cat2 = st.text_area("Category 2 Players (one per line)")
 
 if st.button("Randomize Teams", use_container_width=True):
-
     p1 = [x.strip() for x in cat1.split("\n") if x.strip()]
     p2 = [x.strip() for x in cat2.split("\n") if x.strip()]
 
@@ -74,20 +73,17 @@ if len(st.session_state.teams) != total_teams:
 
 # ---------------- SHOW TEAMS ----------------
 st.subheader("Teams")
-
 for team in team_names:
     color = st.session_state.team_colors[team]
     p1, p2 = st.session_state.teams[team]["players"]
-
     st.markdown(f"""
-    <div style="background:#1f2937;padding:10px;border-radius:8px;margin-bottom:6px;
-    border-left:6px solid {color};">
+    <div style="background:#1f2937;padding:10px;border-radius:8px;margin-bottom:6px;border-left:6px solid {color};">
         <b style="color:{color};font-size:16px;">{team}</b><br>
         <span style="font-size:14px;">{p1} & {p2}</span>
     </div>
     """, unsafe_allow_html=True)
 
-# ---------------- ROUND ROBIN ----------------
+# ---------------- ROUND ROBIN LOGIC ----------------
 def generate_round_robin(teams):
     teams = teams[:]
     rounds = []
@@ -103,132 +99,92 @@ def generate_round_robin(teams):
 rounds = generate_round_robin(team_names)
 match_order = [m for r in rounds for m in r]
 
-# ---------------- LEADERBOARD ----------------
-wins = {t: 0 for t in team_names}
-losses = {t: 0 for t in team_names}
-points = {t: 0 for t in team_names}
-run_rate = {t: 0 for t in team_names}
-played = {t: 0 for t in team_names}
+# ---------------- LEADERBOARD CALCULATION ----------------
+wins, losses, points, run_rate, played = ({t: 0 for t in team_names} for _ in range(5))
 
 for (t1, t2), (s1, s2) in st.session_state.scores.items():
-
     played[t1] += 1
     played[t2] += 1
-
     run_rate[t1] += s1 - s2
     run_rate[t2] += s2 - s1
-
     if s1 > s2:
-        wins[t1] += 1
-        losses[t2] += 1
-        points[t1] += 2
+        wins[t1] += 1; losses[t2] += 1; points[t1] += 2
     elif s2 > s1:
-        wins[t2] += 1
-        losses[t1] += 1
-        points[t2] += 2
+        wins[t2] += 1; losses[t1] += 1; points[t2] += 2
 
-table = [{
-    "Team": t,
-    "P": played[t],
-    "W": wins[t],
-    "L": losses[t],
-    "Pts": points[t],
-    "RR": run_rate[t]
-} for t in team_names]
-
-table = sorted(table, key=lambda x: (x["Pts"], x["RR"]), reverse=True)
-df = pd.DataFrame(table)
+table = [{"Team": t, "P": played[t], "W": wins[t], "L": losses[t], "Pts": points[t], "RR": run_rate[t]} for t in team_names]
+df = pd.DataFrame(table).sort_values(by=["Pts", "RR"], ascending=False)
 
 st.subheader("Live Leaderboard")
 st.dataframe(df, use_container_width=True, hide_index=True)
 
-# ---------------- QUALIFICATION LOCK ----------------
+# ---------------- MATHEMATICAL ELIMINATION CHECK ----------------
 remaining_per_team = {t: 0 for t in team_names}
-
 for match in match_order:
     if match not in st.session_state.completed_matches:
-        t1, t2 = match
-        remaining_per_team[t1] += 1
-        remaining_per_team[t2] += 1
+        remaining_per_team[match[0]] += 1
+        remaining_per_team[match[1]] += 1
 
-max_possible = {t: points[t] + remaining_per_team[t] * 2 for t in team_names}
+# Calculate max possible points for everyone
+max_possible = {t: points[t] + (remaining_per_team[t] * 2) for t in team_names}
+# Sort by current points and RR to find the current "cutoff" (2nd place)
+current_rankings = df["Team"].tolist()
+top_2_teams = current_rankings[:2]
+cutoff_pts = points[current_rankings[1]] if len(current_rankings) > 1 else 0
 
-second_pts = df.iloc[1]["Pts"] if len(df) >= 2 else 0
-still_possible = [t for t in team_names if max_possible[t] >= second_pts]
+# A team is still "alive" if their max possible points >= current 2nd place points
+still_alive = [t for t in team_names if max_possible[t] >= cutoff_pts]
 
-if len(still_possible) == 2 and not st.session_state.final_mode:
-    st.session_state.final_mode = True
-    st.session_state.final_teams = still_possible
+# Final logic: If only 2 teams can mathematically reach the top or all matches done
+if len(still_alive) <= 2 or len(st.session_state.completed_matches) == len(match_order):
+    if not st.session_state.final_mode:
+        st.info(f"✨ Mathematical Certainty: {top_2_teams[0]} and {top_2_teams[1]} have qualified based on points and Run Rate.")
+        if st.button("Proceed to Grand Final", type="primary", use_container_width=True):
+            st.session_state.final_teams = top_2_teams
+            st.session_state.final_mode = True
+            st.rerun()
 
 # ---------------- LEAGUE MATCHES ----------------
 if not st.session_state.final_mode:
-
     st.subheader("League Matches")
     match_counter = 0
-
     for r, matches in enumerate(rounds, start=1):
-        st.markdown(f"### Round {r}")
-
+        st.markdown(f"**Round {r}**")
         for (t1, t2) in matches:
-
-            color1 = st.session_state.team_colors[t1]
-            color2 = st.session_state.team_colors[t2]
-
-            p1a, p1b = st.session_state.teams[t1]["players"]
-            p2a, p2b = st.session_state.teams[t2]["players"]
-
-            st.markdown(f"""
-            <div style="margin-bottom:8px;">
-                <b style="color:{color1};">{t1}</b> ({p1a} & {p1b})
-                <b> vs </b>
-                <b style="color:{color2};">{t2}</b> ({p2a} & {p2b})
-            </div>
-            """, unsafe_allow_html=True)
-
             match_key = (t1, t2)
             is_completed = match_key in st.session_state.completed_matches
             is_next = len(st.session_state.completed_matches) == match_order.index(match_key)
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                s1 = st.number_input(f"{t1} Score", min_value=0, key=f"s1_{match_counter}", disabled=not is_next)
-
-            with col2:
-                s2 = st.number_input(f"{t2} Score", min_value=0, key=f"s2_{match_counter}", disabled=not is_next)
-
-            if is_next and not is_completed:
-                if st.button("Submit", key=f"submit_{match_counter}", use_container_width=True):
-                    st.session_state.scores[match_key] = (s1, s2)
-                    st.session_state.completed_matches.append(match_key)
-                    st.rerun()
-
-            if is_completed:
-                winner = t1 if st.session_state.scores[match_key][0] > st.session_state.scores[match_key][1] else t2
-                st.success(f"Winner: {winner}")
-
+            
+            with st.expander(f"{t1} vs {t2} {'✅' if is_completed else '⏳'}", expanded=is_next):
+                col1, col2 = st.columns(2)
+                with col1:
+                    s1 = st.number_input(f"{t1} Score", min_value=0, key=f"s1_{match_counter}", disabled=not is_next)
+                with col2:
+                    s2 = st.number_input(f"{t2} Score", min_value=0, key=f"s2_{match_counter}", disabled=not is_next)
+                
+                if is_next and not is_completed:
+                    if st.button("Submit Result", key=f"btn_{match_counter}", use_container_width=True):
+                        st.session_state.scores[match_key] = (s1, s2)
+                        st.session_state.completed_matches.append(match_key)
+                        st.rerun()
             match_counter += 1
 
 # ---------------- FINAL MATCH ----------------
 if st.session_state.final_mode and st.session_state.final_teams:
-
     st.divider()
-    st.subheader("🏆 FINAL MATCH")
-
+    st.subheader("🏆 GRAND FINAL")
     t1, t2 = st.session_state.final_teams
-
+    st.write(f"Matchup: **{t1}** vs **{t2}**")
+    
     col1, col2 = st.columns(2)
+    with col1: fs1 = st.number_input(f"{t1} Score", min_value=0, key="f_s1")
+    with col2: fs2 = st.number_input(f"{t2} Score", min_value=0, key="f_s2")
 
-    with col1:
-        fs1 = st.number_input(f"{t1} Final Score", min_value=0, key="final_s1")
-
-    with col2:
-        fs2 = st.number_input(f"{t2} Final Score", min_value=0, key="final_s2")
-
-    if st.button("Submit Final Result", use_container_width=True):
+    if st.button("Declare Champion", use_container_width=True, type="primary"):
         st.session_state.final_score = (fs1, fs2)
 
     if st.session_state.final_score:
         s1, s2 = st.session_state.final_score
-        champion = t1 if s1 > s2 else t2
-        st.success(f"🏆 Champion: {champion}")
+        winner = t1 if s1 > s2 else t2
+        st.balloons()
+        st.success(f"🎊 Tournament Winner: {winner}! 🎊")
