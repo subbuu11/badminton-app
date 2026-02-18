@@ -2,11 +2,12 @@ import streamlit as st
 import string
 import random
 import pandas as pd
+from streamlit.components.v1 import html
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="Badminton Manager Pro", layout="centered")
 
-# ---------------- MOBILE & UI STYLING ----------------
+# ---------------- SCROLL & UI STYLING ----------------
 st.markdown("""
 <style>
     @media (max-width: 768px) {
@@ -15,16 +16,18 @@ st.markdown("""
     }
     .pinned-header {
         position: sticky; top: 0; background: #0e1117; z-index: 999;
-        padding: 10px; border-bottom: 2px solid #1a73e8; margin-bottom: 20px;
+        padding: 10px; border-bottom: 2px solid #1a73e8; margin-bottom: 10px;
     }
     .team-chip {
         display: inline-block; padding: 4px 10px; border-radius: 15px;
-        margin: 4px; font-weight: bold; font-size: 12px; border: 1px solid;
+        margin: 4px; font-weight: bold; font-size: 11px; border: 1px solid;
     }
     .winner-text {
-        color: #00ff00; font-weight: bold; font-size: 16px;
-        text-align: center; margin: 10px 0; display: block;
+        color: #00ff00; font-weight: bold; font-size: 14px;
+        text-align: center; margin: 0; padding: 0;
     }
+    /* Smooth Scroll */
+    html { scroll-behavior: smooth; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -50,8 +53,8 @@ if "teams" not in st.session_state or len(st.session_state.get("teams", {})) != 
 # ---------------- TEAM SETUP ----------------
 st.subheader("Setup Teams")
 c1, c2 = st.columns(2)
-cat1 = c1.text_area("Category 1 Players (one per line)")
-cat2 = c2.text_area("Category 2 Players (one per line)")
+cat1 = c1.text_area("Category 1 Players")
+cat2 = c2.text_area("Category 2 Players")
 
 if st.button("Generate & Randomize Teams", use_container_width=True):
     p1 = [x.strip() for x in cat1.split("\n") if x.strip()]
@@ -83,11 +86,10 @@ def get_rounds(tnames):
         for i in range(n // 2):
             if temp[i] and temp[n - 1 - i]: pairs.append((temp[i], temp[n - 1 - i]))
         rs.append(pairs)
-        temp = [temp[0]] + [temp[-1]] + temp[1:-1]
+        temp = [temp[0:1]] + [temp[-1:]] + temp[1:-1]
     return rs
 
 rounds_list = get_rounds(team_names)
-match_order = [m for r in rounds_list for m in r]
 
 # ---------------- LEADERBOARD ----------------
 stats = {t: {"P": 0, "W": 0, "L": 0, "Pts": 0, "RR": 0} for t in team_names}
@@ -109,43 +111,39 @@ for r_idx, m_list in enumerate(rounds_list):
     if all(m in st.session_state.completed_matches for m in m_list):
         completed_round_count = r_idx + 1
 
-# Gate logic: Peninsula round done? Force decision.
 gate_triggered = (completed_round_count == len(rounds_list) - 1 and st.session_state.final_choice is None)
 
 if gate_triggered:
-    st.error("🚨 **ROUNDS NEARLY COMPLETE: DECISION REQUIRED**")
+    st.error("🚨 DECISION REQUIRED")
     top_2 = df["Team"].tolist()[:2]
-    st.write(f"Top 2 Qualifiers: **{top_2[0]}** & **{top_2[1]}**")
-    
-    c_final, c_cont = st.columns(2)
-    if c_final.button("GO TO FINAL NOW", type="primary"):
-        st.session_state.final_choice = "FINAL"
-        st.session_state.final_mode = True
-        st.rerun()
-    if c_cont.button("CONTINUE LAST ROUND"):
-        st.session_state.final_choice = "CONTINUE"
-        st.rerun()
+    st.write(f"Finalists: **{top_2[0]}** vs **{top_2[1]}**")
+    ca, cb = st.columns(2)
+    if ca.button("GO TO FINAL NOW", type="primary"):
+        st.session_state.final_choice = "FINAL"; st.session_state.final_mode = True; st.rerun()
+    if cb.button("CONTINUE LAST ROUND"):
+        st.session_state.final_choice = "CONTINUE"; st.rerun()
 
 # ---------------- LEAGUE MATCHES ----------------
 if not st.session_state.final_mode and not gate_triggered:
     st.subheader("Match Entries")
     for r_idx, matches in enumerate(rounds_list, 1):
-        with st.expander(f"Round {r_idx}", expanded=(r_idx == completed_round_count + 1)):
+        # Auto-expand the round being played to help with scrolling
+        is_expanded = (r_idx == completed_round_count + 1)
+        with st.expander(f"Round {r_idx}", expanded=is_expanded):
             for (t1, t2) in matches:
                 m_key = (t1, t2)
                 is_done = m_key in st.session_state.completed_matches
-                p1a, p1b = st.session_state.teams[t1]
-                p2a, p2b = st.session_state.teams[t2]
+                p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
                 
-                st.markdown(f"**{t1}** ({p1a} & {p1b}) vs **{t2}** ({p2a} & {p2b})")
+                st.markdown(f"**{t1}** ({p1[0]}&{p1[1]}) vs **{t2}** ({p2[0]}&{p2[1]})")
                 
                 col1, col2, col3 = st.columns([2, 2, 1])
                 val1, val2 = st.session_state.scores.get(m_key, (0, 0))
                 
-                s1 = col1.number_input(f"{t1} Score", 0, key=f"s1_{m_key}", value=val1)
-                s2 = col2.number_input(f"{t2} Score", 0, key=f"s2_{m_key}", value=val2)
+                s1 = col1.number_input(f"{t1}", 0, key=f"s1_{m_key}", value=val1, label_visibility="collapsed")
+                s2 = col2.number_input(f"{t2}", 0, key=f"s2_{m_key}", value=val2, label_visibility="collapsed")
                 
-                if col3.button("Save", key=f"sv_{m_key}"):
+                if col3.button("💾", key=f"sv_{m_key}"):
                     st.session_state.scores[m_key] = (s1, s2)
                     if m_key not in st.session_state.completed_matches:
                         st.session_state.completed_matches.append(m_key)
@@ -153,20 +151,17 @@ if not st.session_state.final_mode and not gate_triggered:
                 
                 if is_done:
                     winner = t1 if s1 > s2 else t2
-                    st.markdown(f"<span class='winner-text'>Winner: {winner}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<p class='winner-text'>Winner: {winner}</p>", unsafe_allow_html=True)
                 st.divider()
 
 # ---------------- FINAL MATCH ----------------
 if st.session_state.final_mode:
     st.divider()
     st.markdown("<h1 style='text-align:center;'>🏆 GRAND FINAL</h1>", unsafe_allow_html=True)
-    top_teams = df["Team"].tolist()[:2]
-    t1, t2 = top_teams
-    p1a, p1b = st.session_state.teams[t1]
-    p2a, p2b = st.session_state.teams[t2]
+    t1, t2 = df["Team"].tolist()[:2]
+    p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
     
-    st.markdown(f"<div style='text-align:center; font-size:18px;'><b>{t1}</b> ({p1a} & {p1b}) vs <b>{t2}</b> ({p2a} & {p2b})</div>", unsafe_allow_html=True)
-    
+    st.markdown(f"<div style='text-align:center;'><b>{t1}</b> ({p1[0]}&{p1[1]}) vs <b>{t2}</b> ({p2[0]}&{p2[1]})</div>", unsafe_allow_html=True)
     cx, cy = st.columns(2)
     fs1 = cx.number_input(f"{t1} Score", 0, key="fs1")
     fs2 = cy.number_input(f"{t2} Score", 0, key="fs2")
@@ -174,4 +169,4 @@ if st.session_state.final_mode:
     if st.button("Complete Tournament", type="primary", use_container_width=True):
         champ = t1 if fs1 > fs2 else t2
         st.balloons()
-        st.success(f"🏆 {champ} wins the Championship! 🏆")
+        st.success(f"🏆 {champ} is the Champion!")
