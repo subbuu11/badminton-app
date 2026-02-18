@@ -6,7 +6,7 @@ import pandas as pd
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="Badminton Manager Pro", layout="centered")
 
-# ---------------- MOBILE & UI STYLING ----------------
+# ---------------- MOBILE UI STYLING ----------------
 st.markdown("""
 <style>
     @media (max-width: 768px) {
@@ -25,11 +25,10 @@ st.markdown("""
         color: #00ff00; font-weight: bold; font-size: 14px;
         text-align: center; margin: 5px 0;
     }
-    html { scroll-behavior: smooth; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h2 style='text-align:center; color:#1a73e8;'>🏸 Badminton Tournament Manager</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align:center; color:#1a73e8;'>🏸 Tournament Manager</h2>", unsafe_allow_html=True)
 
 # ---------------- INITIAL INPUTS ----------------
 total_players = st.number_input("Total Players (Even)", min_value=2, step=2)
@@ -51,8 +50,8 @@ if "teams" not in st.session_state or len(st.session_state.get("teams", {})) != 
 # ---------------- TEAM SETUP ----------------
 st.subheader("Setup Teams")
 c1, c2 = st.columns(2)
-cat1 = c1.text_area("Category 1 Players (one per line)")
-cat2 = c2.text_area("Category 2 Players (one per line)")
+cat1 = c1.text_area("Category 1 Players")
+cat2 = c2.text_area("Category 2 Players")
 
 if st.button("Generate & Randomize Teams", use_container_width=True):
     p1 = [x.strip() for x in cat1.split("\n") if x.strip()]
@@ -63,9 +62,7 @@ if st.button("Generate & Randomize Teams", use_container_width=True):
             st.session_state.teams[team] = [p1[i], p2[i]]
         st.rerun()
 
-if not st.session_state.teams:
-    st.info("Please enter players and click 'Generate Teams' to start.")
-    st.stop()
+if not st.session_state.teams: st.stop()
 
 # ---------------- PINNED TEAM REFERENCE ----------------
 header_html = "<div class='pinned-header'>"
@@ -75,7 +72,7 @@ for team, players in st.session_state.teams.items():
 header_html += "</div>"
 st.markdown(header_html, unsafe_allow_html=True)
 
-# ---------------- ROUND ROBIN LOGIC ----------------
+# ---------------- ROUND ROBIN ----------------
 def get_rounds(tnames):
     temp = tnames[:]
     if len(temp) % 2: temp.append(None)
@@ -115,34 +112,39 @@ for r_idx, m_list in enumerate(rounds_list):
 gate_triggered = (completed_round_count == len(rounds_list) - 1 and st.session_state.final_choice is None)
 
 if gate_triggered:
-    st.error("🚨 ROUNDS NEARLY COMPLETE: DECISION REQUIRED")
+    st.error("🚨 DECISION REQUIRED")
     top_2 = df["Team"].tolist()[:2]
-    st.write(f"Top 2 Qualifiers: **{top_2[0]}** & **{top_2[1]}**")
-    c_final, c_cont = st.columns(2)
-    if c_final.button("GO TO FINAL NOW", type="primary"):
+    st.write(f"Finalists: **{top_2[0]}** vs **{top_2[1]}**")
+    ca, cb = st.columns(2)
+    if ca.button("GO TO FINAL NOW", type="primary"):
         st.session_state.final_choice = "FINAL"; st.session_state.final_mode = True; st.rerun()
-    if c_cont.button("CONTINUE LAST ROUND"):
+    if cb.button("CONTINUE LAST ROUND"):
         st.session_state.final_choice = "CONTINUE"; st.rerun()
 
-# ---------------- LEAGUE MATCHES ----------------
+# ---------------- LEAGUE MATCHES & MOBILE SCROLL ----------------
 if not st.session_state.final_mode and not gate_triggered:
+    active_round_idx = completed_round_count + 1
+    
+    # MOBILE FIX: Use a button to jump to the current match if the user gets lost
+    if active_round_idx <= len(rounds_list):
+        st.markdown(f"<a href='#round-{active_round_idx}' style='text-decoration:none;'><button style='width:100%; background:#1a73e8; color:white; border:none; padding:10px; border-radius:5px;'>Jump to Active Round {active_round_idx} ⬇️</button></a>", unsafe_allow_html=True)
+
     st.subheader("Match Entries")
     for r_idx, matches in enumerate(rounds_list, 1):
-        is_expanded = (r_idx == completed_round_count + 1)
+        # Anchor for scrolling
+        st.markdown(f"<div id='round-{r_idx}'></div>", unsafe_allow_html=True)
+        
+        is_expanded = (r_idx == active_round_idx)
         with st.expander(f"Round {r_idx}", expanded=is_expanded):
             for (t1, t2) in matches:
-                # FIX for the TypeError in your image: Safety check for team initialization
-                if t1 not in st.session_state.teams or t2 not in st.session_state.teams:
-                    continue
-                
+                if t1 not in st.session_state.teams or t2 not in st.session_state.teams: continue
                 m_key = (t1, t2)
                 is_done = m_key in st.session_state.completed_matches
-                p1a, p1b = st.session_state.teams[t1]
-                p2a, p2b = st.session_state.teams[t2]
+                p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
                 
-                st.markdown(f"**{t1}** ({p1a}&{p1b}) vs **{t2}** ({p2a}&{p2b})")
+                st.markdown(f"**{t1}** ({p1[0]}&{p1[1]}) vs **{t2}** ({p2[0]}&{p2[1]})")
                 
-                col1, col2, col3 = st.columns([2, 2, 1])
+                col1, col2, col3 = st.columns([2,2,1])
                 val1, val2 = st.session_state.scores.get(m_key, (0, 0))
                 
                 s1 = col1.number_input(f"{t1}", 0, key=f"s1_{m_key}", value=val1, label_visibility="collapsed")
@@ -156,29 +158,27 @@ if not st.session_state.final_mode and not gate_triggered:
                 
                 if is_done:
                     winner = t1 if s1 > s2 else t2
-                    st.markdown(f"<div class='winner-text'>Winner: {winner}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<p class='winner-text'>Winner: {winner}</p>", unsafe_allow_html=True)
                 st.divider()
 
 # ---------------- FINAL MATCH ----------------
 if st.session_state.final_mode:
     st.divider()
     st.markdown("<h1 style='text-align:center;'>🏆 GRAND FINAL</h1>", unsafe_allow_html=True)
-    top_teams = df["Team"].tolist()[:2]
-    t1, t2 = top_teams
-    p1a, p1b = st.session_state.teams[t1]
-    p2a, p2b = st.session_state.teams[t2]
+    top_2 = df["Team"].tolist()[:2]
+    t1, t2 = top_2[0], top_2[1]
+    p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
     
-    st.markdown(f"<div style='text-align:center; font-size:18px;'><b>{t1}</b> ({p1a}&{p1b}) vs <b>{t2}</b> ({p2a}&{p2b})</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:center;'><b>{t1}</b> ({p1[0]}&{p1[1]}) <br>vs<br> <b>{t2}</b> ({p2[0]}&{p2[1]})</div>", unsafe_allow_html=True)
     cx, cy = st.columns(2)
-    fs1 = cx.number_input(f"{t1} Final Score", 0, key="fs1")
-    fs2 = cy.number_input(f"{t2} Final Score", 0, key="fs2")
+    fs1 = cx.number_input(f"{t1} Score", 0, key="fs1")
+    fs2 = cy.number_input(f"{t2} Score", 0, key="fs2")
     
     if st.button("Complete Tournament", type="primary", use_container_width=True):
         champ = t1 if fs1 > fs2 else t2
         st.balloons()
         st.success(f"🏆 {champ} is the Champion! 🏆")
 
-# ---------------- RESET ----------------
-if st.sidebar.button("Reset Tournament Data"):
+if st.sidebar.button("Reset All Data"):
     st.session_state.clear()
     st.rerun()
