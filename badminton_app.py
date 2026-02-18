@@ -28,7 +28,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h2 style='text-align:center; color:#1a73e8;'>🏸 Tournament Manager</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align:center; color:#1a73e8;'>🏸Badminton Tournament Manager</h2>", unsafe_allow_html=True)
 
 # ---------------- INITIAL INPUTS ----------------
 total_players = st.number_input("Total Players (Even)", min_value=2, step=2)
@@ -182,3 +182,4 @@ if st.session_state.final_mode:
 if st.sidebar.button("Reset All Data"):
     st.session_state.clear()
     st.rerun()
+
