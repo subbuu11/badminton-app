@@ -3,8 +3,29 @@ import string
 import random
 import pandas as pd
 
-# ---------------- PAGE CONFIG ----------------
+# ---------------- PAGE CONFIG & SIDEBAR ----------------
 st.set_page_config(page_title="Badminton Manager Pro", layout="centered")
+
+# --- CALLBACK FUNCTIONS --- 
+# These run instantly before anything else on the page loads!
+def reset_scores_and_matches():
+    st.session_state.scores = {}
+    st.session_state.completed_matches = []
+    st.session_state.final_mode = False
+    st.session_state.final_choice = None
+    
+    # Wipe the score input boxes from memory
+    for key in list(st.session_state.keys()):
+        if key.startswith("s1_") or key.startswith("s2_") or key.startswith("fs"):
+            del st.session_state[key]
+
+def hard_reset_all():
+    st.session_state.clear()
+
+# ---------------- SIDEBAR CONTROLS ----------------
+st.sidebar.header("⚙️ Data Management")
+st.sidebar.button("🔄 Reset Scores & Matches", on_click=reset_scores_and_matches, help="Clears the leaderboard and matches, but keeps your teams.")
+st.sidebar.button("⚠️ Hard Reset All Data", type="primary", on_click=hard_reset_all, help="Completely wipes all teams and scores.")
 
 # ---------------- MOBILE UI STYLING ----------------
 st.markdown("""
@@ -112,29 +133,34 @@ for r_idx, m_list in enumerate(rounds_list):
 gate_triggered = (completed_round_count == len(rounds_list) - 1 and st.session_state.final_choice is None)
 
 if gate_triggered:
-    st.error("🚨 DECISION REQUIRED")
+    st.warning("⚠️ **ALERT: DECISION REQUIRED BEFORE PROCEEDING!**")
+    st.error("🚨 You have reached the final round of the league.")
     top_2 = df["Team"].tolist()[:2]
-    st.write(f"Finalists: **{top_2[0]}** vs **{top_2[1]}**")
+    st.write(f"Current Finalists: **{top_2[0]}** vs **{top_2[1]}**")
     ca, cb = st.columns(2)
     if ca.button("GO TO FINAL NOW", type="primary"):
         st.session_state.final_choice = "FINAL"; st.session_state.final_mode = True; st.rerun()
     if cb.button("CONTINUE LAST ROUND"):
         st.session_state.final_choice = "CONTINUE"; st.rerun()
+    
+    st.stop() 
+
+if completed_round_count == len(rounds_list) and not st.session_state.final_mode:
+    st.success("✅ All league matches are complete!")
+    if st.button("PROCEED TO GRAND FINAL", type="primary", use_container_width=True):
+        st.session_state.final_mode = True
+        st.rerun()
 
 # ---------------- LEAGUE MATCHES & MOBILE SCROLL ----------------
-if not st.session_state.final_mode and not gate_triggered:
+if not st.session_state.final_mode:
     active_round_idx = completed_round_count + 1
     
-    # MOBILE FIX: Use a button to jump to the current match if the user gets lost
-    if active_round_idx <= len(rounds_list):
-        st.markdown(f"<a href='#round-{active_round_idx}' style='text-decoration:none;'><button style='width:100%; background:#1a73e8; color:white; border:none; padding:10px; border-radius:5px;'>Jump to Active Round {active_round_idx} ⬇️</button></a>", unsafe_allow_html=True)
-
     st.subheader("Match Entries")
     for r_idx, matches in enumerate(rounds_list, 1):
-        # Anchor for scrolling
         st.markdown(f"<div id='round-{r_idx}'></div>", unsafe_allow_html=True)
         
         is_expanded = (r_idx == active_round_idx)
+        
         with st.expander(f"Round {r_idx}", expanded=is_expanded):
             for (t1, t2) in matches:
                 if t1 not in st.session_state.teams or t2 not in st.session_state.teams: continue
@@ -142,24 +168,39 @@ if not st.session_state.final_mode and not gate_triggered:
                 is_done = m_key in st.session_state.completed_matches
                 p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
                 
-                st.markdown(f"**{t1}** ({p1[0]}&{p1[1]}) vs **{t2}** ({p2[0]}&{p2[1]})")
-                
-                col1, col2, col3 = st.columns([2,2,1])
                 val1, val2 = st.session_state.scores.get(m_key, (0, 0))
                 
-                s1 = col1.number_input(f"{t1}", 0, key=f"s1_{m_key}", value=val1, label_visibility="collapsed")
-                s2 = col2.number_input(f"{t2}", 0, key=f"s2_{m_key}", value=val2, label_visibility="collapsed")
-                
-                if col3.button("💾", key=f"sv_{m_key}"):
-                    st.session_state.scores[m_key] = (s1, s2)
-                    if m_key not in st.session_state.completed_matches:
-                        st.session_state.completed_matches.append(m_key)
-                    st.rerun()
-                
+                # --- THIS IS THE UPDATED PART FOR GREEN TEXT IN THE TITLE ---
                 if is_done:
-                    winner = t1 if s1 > s2 else t2
-                    st.markdown(f"<p class='winner-text'>Winner: {winner}</p>", unsafe_allow_html=True)
-                st.divider()
+                    winner = t1 if val1 > val2 else t2
+                    match_title = f"✅ {t1} vs {t2} (:green[Winner: {winner}])"
+                else:
+                    match_title = f"🏸 {t1} vs {t2}"
+                
+                # The nested match expander: automatically closes if the match is saved
+                with st.expander(match_title, expanded=not is_done):
+                    
+                    # Highlights the winner in green once the match is saved inside the box
+                    if is_done:
+                        t1_disp = f":green[**{t1}** ({p1[0]}&{p1[1]})]" if val1 > val2 else f"**{t1}** ({p1[0]}&{p1[1]})"
+                        t2_disp = f":green[**{t2}** ({p2[0]}&{p2[1]})]" if val2 > val1 else f"**{t2}** ({p2[0]}&{p2[1]})"
+                        st.markdown(f"{t1_disp} vs {t2_disp}")
+                    else:
+                        st.markdown(f"**{t1}** ({p1[0]}&{p1[1]}) vs **{t2}** ({p2[0]}&{p2[1]})")
+                    
+                    col1, col2, col3 = st.columns([2,2,1])
+                    
+                    s1 = col1.number_input(f"{t1}", 0, key=f"s1_{m_key}", value=val1, label_visibility="collapsed")
+                    s2 = col2.number_input(f"{t2}", 0, key=f"s2_{m_key}", value=val2, label_visibility="collapsed")
+                    
+                    if col3.button("💾", key=f"sv_{m_key}"):
+                        st.session_state.scores[m_key] = (s1, s2)
+                        if m_key not in st.session_state.completed_matches:
+                            st.session_state.completed_matches.append(m_key)
+                        st.rerun()
+                    
+                    if is_done:
+                        st.markdown(f"<p class='winner-text'>Winner: {winner}</p>", unsafe_allow_html=True)
 
 # ---------------- FINAL MATCH ----------------
 if st.session_state.final_mode:
@@ -178,8 +219,3 @@ if st.session_state.final_mode:
         champ = t1 if fs1 > fs2 else t2
         st.balloons()
         st.success(f"🏆 {champ} is the Champion! 🏆")
-
-if st.sidebar.button("Reset All Data"):
-    st.session_state.clear()
-    st.rerun()
-
