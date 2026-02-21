@@ -83,7 +83,17 @@ if st.button("Generate & Randomize Teams", use_container_width=True):
             st.session_state.teams[team] = [p1[i], p2[i]]
         st.rerun()
 
-if not st.session_state.teams: st.stop()
+if not st.session_state.teams:
+
+    # ---------------- FIRST SCREEN FOOTER ----------------
+    st.markdown("""
+    <hr style="margin-top:40px;">
+    <div style='text-align:center; font-size:14px; color:#888; padding:15px;'>
+    Developed with ❤️ by <b>Subbiah S</b>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.stop()
 
 # ---------------- PINNED TEAM REFERENCE ----------------
 header_html = "<div class='pinned-header'>"
@@ -219,3 +229,12 @@ if st.session_state.final_mode:
         champ = t1 if fs1 > fs2 else t2
         st.balloons()
         st.success(f"🏆 {champ} is the Champion! 🏆")
+
+# ---------------- GLOBAL FOOTER ----------------
+st.markdown("""
+<hr style="margin-top:40px;">
+<div style='text-align:center; font-size:14px; color:#888; padding:15px;'>
+Developed with ❤️ by <b>S Subbiah</b>
+</div>
+""", unsafe_allow_html=True)
+
