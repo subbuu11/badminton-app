@@ -130,7 +130,9 @@ for (t1, t2), (s1, s2) in st.session_state.scores.items():
     elif s2 > s1: 
         stats[t2]["W"] += 1; stats[t2]["Pts"] += 2; stats[t1]["L"] += 1
 
-df = pd.DataFrame([{"Team": t, **v} for t, v in stats.items()]).sort_values(["Pts", "RR"], ascending=False)
+# ONLY CHANGED THIS LINE: Now sorts by RR first, then Pts
+df = pd.DataFrame([{"Team": t, **v} for t, v in stats.items()]).sort_values(["RR", "Pts"], ascending=False)
+
 st.subheader("Leaderboard")
 st.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -234,7 +236,6 @@ if st.session_state.final_mode:
 st.markdown("""
 <hr style="margin-top:40px;">
 <div style='text-align:center; font-size:14px; color:#888; padding:15px;'>
-Developed with ❤️ by <b>S Subbiah</b>
+Developed with ❤️ by <b>Subbiah S</b>
 </div>
 """, unsafe_allow_html=True)
-
