@@ -55,7 +55,6 @@ def hard_reset_all():
         os.remove(DATA_FILE)
 
 # ---------------- INITIALIZE DATA ----------------
-# Load from file first. If empty, setup the basic session state
 if "teams" not in st.session_state:
     has_data = load_data()
     if not has_data:
@@ -83,8 +82,8 @@ st.markdown("""
         padding: 10px; border-bottom: 2px solid #1a73e8; margin-bottom: 10px;
     }
     .team-chip {
-        display: inline-block; padding: 4px 10px; border-radius: 15px;
-        margin: 4px; font-weight: bold; font-size: 11px; border: 1px solid;
+        display: inline-block; padding: 6px 14px; border-radius: 20px;
+        margin: 5px; font-weight: bold; font-size: 15px; border: 2px solid;
     }
     .winner-text {
         color: #00ff00; font-weight: bold; font-size: 14px;
@@ -101,15 +100,8 @@ if not st.session_state.teams:
     total_teams = total_players // 2
     team_names = [f"Team {string.ascii_uppercase[i]}" for i in range(total_teams)]
     
-    # Assign colors early
-    if not st.session_state.team_colors:
-        colors = ["#FF6B6B", "#4D96FF", "#6BCB77", "#FFD93D", "#845EC2", "#FF9671", "#00C9A7", "#C34A36"]
-        random.shuffle(colors)
-        st.session_state.team_colors = {t: colors[i % len(colors)] for i, t in enumerate(team_names)}
-
     st.subheader("Setup Teams")
     
-    # Tabs for Manual vs Random selection
     tab1, tab2 = st.tabs(["🔀 Randomize Players", "✍️ Manual Teams"])
     
     with tab1:
@@ -124,7 +116,7 @@ if not st.session_state.teams:
                 random.shuffle(p1); random.shuffle(p2)
                 for i, team in enumerate(team_names):
                     st.session_state.teams[team] = [p1[i], p2[i]]
-                save_data() # Save to database
+                save_data() 
                 st.rerun()
             else:
                 st.error(f"Please enter exactly {total_teams} players in each category.")
@@ -146,7 +138,7 @@ if not st.session_state.teams:
                 st.session_state.teams[team] = players
             
             if valid:
-                save_data() # Save to database
+                save_data() 
                 st.rerun()
 
     st.markdown("""
@@ -160,9 +152,17 @@ if not st.session_state.teams:
 team_names = list(st.session_state.teams.keys())
 
 # ---------------- PINNED TEAM REFERENCE ----------------
-header_html = "<div class='pinned-header'>"
+colors_palette = ["#FF6B6B", "#4D96FF", "#6BCB77", "#FFD93D", "#845EC2", "#FF9671", "#00C9A7", "#C34A36", "#F38181", "#95E1D3"]
+
+for i, team in enumerate(st.session_state.teams.keys()):
+    if team not in st.session_state.team_colors or st.session_state.team_colors[team] == "#FFFFFF":
+        st.session_state.team_colors[team] = colors_palette[i % len(colors_palette)]
+        
+save_data() 
+
+header_html = "<div class='pinned-header' style='text-align: center;'>"
 for team, players in st.session_state.teams.items():
-    color = st.session_state.team_colors.get(team, "#FFFFFF")
+    color = st.session_state.team_colors[team]
     header_html += f"<span class='team-chip' style='color:{color}; border-color:{color};'>{team}: {players[0]} & {players[1]}</span>"
 header_html += "</div>"
 st.markdown(header_html, unsafe_allow_html=True)
@@ -186,7 +186,7 @@ rounds_list = get_rounds(team_names)
 # ---------------- LEADERBOARD ----------------
 stats = {t: {"P": 0, "W": 0, "L": 0, "Pts": 0, "RR": 0} for t in team_names}
 for m_key, (s1, s2) in st.session_state.scores.items():
-    t1, t2 = m_key.split("|") # Split our string key back to teams
+    t1, t2 = m_key.split("|") 
     stats[t1]["P"] += 1; stats[t2]["P"] += 1
     stats[t1]["RR"] += (s1 - s2); stats[t2]["RR"] += (s2 - s1)
     if s1 > s2: 
@@ -202,7 +202,6 @@ st.dataframe(df, use_container_width=True, hide_index=True)
 # ---------------- DECISION GATE ----------------
 completed_round_count = 0
 for r_idx, m_list in enumerate(rounds_list):
-    # check string keys
     if all(f"{t1}|{t2}" in st.session_state.completed_matches for (t1, t2) in m_list):
         completed_round_count = r_idx + 1
 
@@ -231,6 +230,36 @@ if completed_round_count == len(rounds_list) and not st.session_state.final_mode
 if not st.session_state.final_mode:
     active_round_idx = completed_round_count + 1
     
+    # --- NEW: FIND THE NEXT TWO MATCHES ---
+    upcoming_matches = []
+    for r_idx, matches in enumerate(rounds_list, 1):
+        for (t1, t2) in matches:
+            # Prevents the app from crashing on empty teams
+            if t1 not in st.session_state.teams or t2 not in st.session_state.teams: continue 
+            
+            m_key = f"{t1}|{t2}"
+            if m_key not in st.session_state.completed_matches:
+                upcoming_matches.append(((t1, t2), r_idx))
+            if len(upcoming_matches) == 2: # Stop once we find the next 2 matches
+                break
+        if len(upcoming_matches) == 2:
+            break
+            
+    # --- NEW: DISPLAY THE DOUBLE BANNER ---
+    if upcoming_matches:
+        # Match 1 (Immediate Next)
+        (nt1, nt2), n_round = upcoming_matches[0]
+        np1, np2 = st.session_state.teams[nt1], st.session_state.teams[nt2]
+        banner_text = f"📢 **UP NEXT (Round {n_round}):** {nt1} ({np1[0]} & {np1[1]}) 🆚 {nt2} ({np2[0]} & {np2[1]}) — *Get on the court!*"
+        
+        # Match 2 (Next After Next)
+        if len(upcoming_matches) > 1:
+            (dt1, dt2), d_round = upcoming_matches[1]
+            dp1, dp2 = st.session_state.teams[dt1], st.session_state.teams[dt2]
+            banner_text += f"  \n⏳ **GETTING READY (Round {d_round}):** {dt1} ({dp1[0]} & {dp1[1]}) 🆚 {dt2} ({dp2[0]} & {dp2[1]}) — *Warm up!*"
+            
+        st.info(banner_text)
+
     st.subheader("Match Entries")
     for r_idx, matches in enumerate(rounds_list, 1):
         is_expanded = (r_idx == active_round_idx)
@@ -238,7 +267,7 @@ if not st.session_state.final_mode:
         with st.expander(f"Round {r_idx}", expanded=is_expanded):
             for (t1, t2) in matches:
                 if t1 not in st.session_state.teams or t2 not in st.session_state.teams: continue
-                m_key = f"{t1}|{t2}" # Using a string key so JSON handles it perfectly
+                m_key = f"{t1}|{t2}" 
                 is_done = m_key in st.session_state.completed_matches
                 p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
                 
@@ -267,7 +296,10 @@ if not st.session_state.final_mode:
                         st.session_state.scores[m_key] = [s1, s2]
                         if m_key not in st.session_state.completed_matches:
                             st.session_state.completed_matches.append(m_key)
-                        save_data() # Save to database instantly
+                        save_data() 
+                        
+                        st.toast(f"Score Saved! Check the 'Up Next' banner.", icon="✅")
+                        
                         st.rerun()
                     
                     if is_done:
