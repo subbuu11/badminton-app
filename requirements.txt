@@ -1,3 +1,4 @@
 pandas
 altair
 jinja2
+matplotlib
