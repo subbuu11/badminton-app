@@ -152,7 +152,7 @@ for m_key, (s1, s2) in st.session_state.scores.items():
     elif s2 > s1: 
         stats[t2]["W"] += 1; stats[t2]["Pts"] += 2; stats[t1]["L"] += 1
 
-# SORTING: Strictly by Points and Wins (RR is not used for placement)
+# SORTING: Strictly by Points and Wins
 data_list = [{"Team": t, **v} for t, v in stats.items()]
 df = pd.DataFrame(data_list).sort_values(["Pts", "W"], ascending=False)
 
@@ -164,7 +164,6 @@ if not df.empty and df['Pts'].max() > 0:
         icons = ["🥇", "🥈", "🥉"]
         c.metric(f"{icons[i]} Rank {i+1}", top[i]['Team'], f"{top[i]['Pts']} Pts")
 
-    # Table rendering with RR column included
     st.dataframe(
         df.style.background_gradient(subset=['Pts'], cmap="Blues")
                 .background_gradient(subset=['W'], cmap="Greens")
