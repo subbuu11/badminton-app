@@ -165,8 +165,9 @@ for m_key, (s1, s2) in st.session_state.scores.items():
     elif s2 > s1: 
         stats[t2]["W"] += 1; stats[t2]["Pts"] += 2; stats[t1]["L"] += 1
 
+# SORTING: By Points, then Wins, then Run Rate (RR) as the tie-breaker
 data_list = [{"Team": t, **v} for t, v in stats.items()]
-df = pd.DataFrame(data_list).sort_values(["Pts", "W"], ascending=False)
+df = pd.DataFrame(data_list).sort_values(by=["Pts", "W", "RR"], ascending=[False, False, False])
 
 st.subheader("📊 Tournament Standings")
 if not df.empty and df['Pts'].max() > 0:
@@ -176,18 +177,16 @@ if not df.empty and df['Pts'].max() > 0:
         icons = ["🥇", "🥈", "🥉"]
         c.metric(f"{icons[i]} Rank {i+1}", top[i]['Team'], f"{top[i]['Pts']} Pts")
 
-    # This function colors the team names in the table based on their assigned color
     def color_team_column(val):
         color = st.session_state.team_colors.get(val, "white")
         return f'color: {color}; font-weight: bold;'
 
-    # Apply the team colors AND the background gradients safely
     try:
         styled_df = df.style.map(color_team_column, subset=['Team']) \
                             .background_gradient(subset=['Pts'], cmap="Blues") \
                             .background_gradient(subset=['W'], cmap="Greens") \
                             .background_gradient(subset=['RR'], cmap="YlOrRd")
-    except AttributeError: # Fallback for older versions of Pandas
+    except AttributeError: 
         styled_df = df.style.applymap(color_team_column, subset=['Team']) \
                             .background_gradient(subset=['Pts'], cmap="Blues") \
                             .background_gradient(subset=['W'], cmap="Greens") \
@@ -245,7 +244,6 @@ if not st.session_state.final_mode:
                 expander_title = f"{t1} vs {t2}" if not is_done else f"✅ {t1} vs {t2} (Winner: {current_winner})"
                 
                 with st.expander(expander_title, expanded=not is_done):
-                    # Color-coded Match Header
                     st.markdown(f"<div style='text-align:center; font-size:16px; margin-bottom: 10px; padding: 5px; background-color: #1a1c23; border-radius: 5px;'><span style='color:{color_1}; font-weight:bold;'>{t1} ({p1[0]} & {p1[1]})</span> <span style='color:#888;'>🆚</span> <span style='color:{color_2}; font-weight:bold;'>{t2} ({p2[0]} & {p2[1]})</span></div>", unsafe_allow_html=True)
                     
                     c1, c2, c3 = st.columns([2, 2, 1])
