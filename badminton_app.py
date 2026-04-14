@@ -4,24 +4,32 @@ import random
 import pandas as pd
 import json
 import os
+import altair as alt
 
 # ---------------- CONFIG & DATA SERVER ----------------
 st.set_page_config(page_title="Badminton Manager Pro", layout="centered")
 
 DATA_FILE = "tournament_data.json"
 
+# --- Initialize a reset key to force UI elements to clear ---
+if "reset_key" not in st.session_state:
+    st.session_state.reset_key = 0
+
 def load_data():
     """Reads data from the local JSON server."""
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
-            data = json.load(f)
-            st.session_state.teams = data.get("teams", {})
-            st.session_state.scores = data.get("scores", {})
-            st.session_state.completed_matches = data.get("completed_matches", [])
-            st.session_state.final_mode = data.get("final_mode", False)
-            st.session_state.final_choice = data.get("final_choice", None)
-            st.session_state.team_colors = data.get("team_colors", {})
-            return True
+            try:
+                data = json.load(f)
+                st.session_state.teams = data.get("teams", {})
+                st.session_state.scores = data.get("scores", {})
+                st.session_state.completed_matches = data.get("completed_matches", [])
+                st.session_state.final_mode = data.get("final_mode", False)
+                st.session_state.final_choice = data.get("final_choice", None)
+                st.session_state.team_colors = data.get("team_colors", {})
+                return True
+            except json.JSONDecodeError:
+                return False
     return False
 
 def save_data():
@@ -43,16 +51,23 @@ def reset_scores_and_matches():
     st.session_state.completed_matches = []
     st.session_state.final_mode = False
     st.session_state.final_choice = None
-    save_data()
     
-    for key in list(st.session_state.keys()):
-        if key.startswith("s1_") or key.startswith("s2_") or key.startswith("fs"):
-            del st.session_state[key]
+    # Increment the key to force the frontend score boxes to completely reset
+    st.session_state.reset_key += 1 
+    save_data()
 
 def hard_reset_all():
     st.session_state.clear()
-    if os.path.exists(DATA_FILE):
-        os.remove(DATA_FILE)
+    st.session_state.reset_key = 0
+    
+    # Safely wipe the JSON save file so old data doesn't haunt the fresh app
+    try:
+        if os.path.exists(DATA_FILE):
+            os.remove(DATA_FILE)
+    except Exception:
+        pass
+    with open(DATA_FILE, "w") as f:
+        json.dump({}, f)
 
 # ---------------- INITIALIZE DATA ----------------
 if "teams" not in st.session_state:
@@ -183,21 +198,46 @@ def get_rounds(tnames):
 
 rounds_list = get_rounds(team_names)
 
-# ---------------- LEADERBOARD ----------------
-stats = {t: {"P": 0, "W": 0, "L": 0, "Pts": 0, "RR": 0} for t in team_names}
+# ---------------- LEADERBOARD & PREMIUM VISUALIZATION ----------------
+stats = {t: {"P": 0, "W": 0, "L": 0, "Pts": 0} for t in team_names}
 for m_key, (s1, s2) in st.session_state.scores.items():
     t1, t2 = m_key.split("|") 
     stats[t1]["P"] += 1; stats[t2]["P"] += 1
-    stats[t1]["RR"] += (s1 - s2); stats[t2]["RR"] += (s2 - s1)
     if s1 > s2: 
         stats[t1]["W"] += 1; stats[t1]["Pts"] += 2; stats[t2]["L"] += 1
     elif s2 > s1: 
         stats[t2]["W"] += 1; stats[t2]["Pts"] += 2; stats[t1]["L"] += 1
 
-df = pd.DataFrame([{"Team": t, **v} for t, v in stats.items()]).sort_values(["RR", "Pts"], ascending=False)
+data_list = [{"Team": t, **v} for t, v in stats.items()]
+if not data_list:
+    df = pd.DataFrame(columns=["Team", "P", "W", "L", "Pts"])
+else:
+    df = pd.DataFrame(data_list).sort_values(["Pts", "W"], ascending=False)
 
-st.subheader("Leaderboard")
-st.dataframe(df, use_container_width=True, hide_index=True)
+st.markdown("<h3 style='text-align:center;'>📊 Tournament Standings</h3>", unsafe_allow_html=True)
+
+top_teams = df.to_dict('records')
+if len(top_teams) >= 3:
+    c1, c2, c3 = st.columns(3)
+    c1.metric(label="🥇 1st Place", value=top_teams[0]['Team'], delta=f"{top_teams[0]['Pts']} Pts ({top_teams[0]['W']} Wins)")
+    c2.metric(label="🥈 2nd Place", value=top_teams[1]['Team'], delta=f"{top_teams[1]['Pts']} Pts ({top_teams[1]['W']} Wins)")
+    c3.metric(label="🥉 3rd Place", value=top_teams[2]['Team'], delta=f"{top_teams[2]['Pts']} Pts ({top_teams[2]['W']} Wins)", delta_color="off")
+
+if not df.empty:
+    chart = alt.Chart(df).mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5).encode(
+        x=alt.X('Team:N', sort='-y', title=None, axis=alt.Axis(labelAngle=0)),
+        y=alt.Y('Pts:Q', title="Total Points"),
+        color=alt.Color('Team:N', legend=None),
+        tooltip=['Team', 'P', 'W', 'L', 'Pts']
+    ).properties(height=280).configure_axis(grid=False).configure_view(strokeWidth=0)
+    st.altair_chart(chart, use_container_width=True)
+
+if not df.empty:
+    st.dataframe(
+        df.style.background_gradient(subset=['Pts'], cmap="Blues").background_gradient(subset=['W'], cmap="Greens"),
+        use_container_width=True,
+        hide_index=True
+    )
 
 # ---------------- DECISION GATE ----------------
 completed_round_count = 0
@@ -230,29 +270,24 @@ if completed_round_count == len(rounds_list) and not st.session_state.final_mode
 if not st.session_state.final_mode:
     active_round_idx = completed_round_count + 1
     
-    # --- NEW: FIND THE NEXT TWO MATCHES ---
     upcoming_matches = []
     for r_idx, matches in enumerate(rounds_list, 1):
         for (t1, t2) in matches:
-            # Prevents the app from crashing on empty teams
             if t1 not in st.session_state.teams or t2 not in st.session_state.teams: continue 
             
             m_key = f"{t1}|{t2}"
             if m_key not in st.session_state.completed_matches:
                 upcoming_matches.append(((t1, t2), r_idx))
-            if len(upcoming_matches) == 2: # Stop once we find the next 2 matches
+            if len(upcoming_matches) == 2:
                 break
         if len(upcoming_matches) == 2:
             break
             
-    # --- NEW: DISPLAY THE DOUBLE BANNER ---
     if upcoming_matches:
-        # Match 1 (Immediate Next)
         (nt1, nt2), n_round = upcoming_matches[0]
         np1, np2 = st.session_state.teams[nt1], st.session_state.teams[nt2]
         banner_text = f"📢 **UP NEXT (Round {n_round}):** {nt1} ({np1[0]} & {np1[1]}) 🆚 {nt2} ({np2[0]} & {np2[1]}) — *Get on the court!*"
         
-        # Match 2 (Next After Next)
         if len(upcoming_matches) > 1:
             (dt1, dt2), d_round = upcoming_matches[1]
             dp1, dp2 = st.session_state.teams[dt1], st.session_state.teams[dt2]
@@ -261,6 +296,8 @@ if not st.session_state.final_mode:
         st.info(banner_text)
 
     st.subheader("Match Entries")
+    rk = st.session_state.reset_key  # Use the key to refresh boxes
+    
     for r_idx, matches in enumerate(rounds_list, 1):
         is_expanded = (r_idx == active_round_idx)
         
@@ -273,9 +310,12 @@ if not st.session_state.final_mode:
                 
                 val1, val2 = st.session_state.scores.get(m_key, [0, 0])
                 
+                # BUG FIX: Force 'current_winner' to None initially so it doesn't leak
+                current_winner = None
+                
                 if is_done:
-                    winner = t1 if val1 > val2 else t2
-                    match_title = f"✅ {t1} vs {t2} (:green[Winner: {winner}])"
+                    current_winner = t1 if val1 > val2 else t2
+                    match_title = f"✅ {t1} vs {t2} (:green[Winner: {current_winner}])"
                 else:
                     match_title = f"🏸 {t1} vs {t2}"
                 
@@ -289,25 +329,25 @@ if not st.session_state.final_mode:
                     
                     col1, col2, col3 = st.columns([2,2,1])
                     
-                    s1 = col1.number_input(f"{t1}", 0, key=f"s1_{m_key}", value=val1, label_visibility="collapsed")
-                    s2 = col2.number_input(f"{t2}", 0, key=f"s2_{m_key}", value=val2, label_visibility="collapsed")
+                    s1 = col1.number_input(f"{t1}", 0, key=f"s1_{m_key}_{rk}", value=val1, label_visibility="collapsed")
+                    s2 = col2.number_input(f"{t2}", 0, key=f"s2_{m_key}_{rk}", value=val2, label_visibility="collapsed")
                     
-                    if col3.button("💾", key=f"sv_{m_key}"):
+                    if col3.button("💾", key=f"sv_{m_key}_{rk}"):
                         st.session_state.scores[m_key] = [s1, s2]
                         if m_key not in st.session_state.completed_matches:
                             st.session_state.completed_matches.append(m_key)
                         save_data() 
-                        
-                        st.toast(f"Score Saved! Check the 'Up Next' banner.", icon="✅")
-                        
+                        st.toast("Score Saved! Check the 'Up Next' banner.", icon="✅")
                         st.rerun()
                     
-                    if is_done:
-                        st.markdown(f"<p class='winner-text'>Winner: {winner}</p>", unsafe_allow_html=True)
+                    # BUG FIX: Ensure this text only prints if the current specific match is actually completed
+                    if is_done and current_winner:
+                        st.markdown(f"<p class='winner-text'>Winner: {current_winner}</p>", unsafe_allow_html=True)
 
 # ---------------- FINAL MATCH ----------------
 if st.session_state.final_mode:
     st.divider()
+    rk = st.session_state.reset_key
     st.markdown("<h1 style='text-align:center;'>🏆 GRAND FINAL</h1>", unsafe_allow_html=True)
     top_2 = df["Team"].tolist()[:2]
     t1, t2 = top_2[0], top_2[1]
@@ -315,8 +355,8 @@ if st.session_state.final_mode:
     
     st.markdown(f"<div style='text-align:center;'><b>{t1}</b> ({p1[0]}&{p1[1]}) <br>vs<br> <b>{t2}</b> ({p2[0]}&{p2[1]})</div>", unsafe_allow_html=True)
     cx, cy = st.columns(2)
-    fs1 = cx.number_input(f"{t1} Score", 0, key="fs1")
-    fs2 = cy.number_input(f"{t2} Score", 0, key="fs2")
+    fs1 = cx.number_input(f"{t1} Score", 0, key=f"fs1_{rk}")
+    fs2 = cy.number_input(f"{t2} Score", 0, key=f"fs2_{rk}")
     
     if st.button("Complete Tournament", type="primary", use_container_width=True):
         champ = t1 if fs1 > fs2 else t2
