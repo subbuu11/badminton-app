@@ -11,12 +11,10 @@ st.set_page_config(page_title="Badminton Manager Pro", layout="centered")
 
 DATA_FILE = "tournament_data.json"
 
-# Initialize a reset key to force UI elements to clear
 if "reset_key" not in st.session_state:
     st.session_state.reset_key = 0
 
 def load_data():
-    """Reads data from the local JSON server."""
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
             try:
@@ -33,7 +31,6 @@ def load_data():
     return False
 
 def save_data():
-    """Writes the current session state to the local JSON server."""
     data = {
         "teams": st.session_state.get("teams", {}),
         "scores": st.session_state.get("scores", {}),
@@ -45,7 +42,6 @@ def save_data():
     with open(DATA_FILE, "w") as f:
         json.dump(data, f)
 
-# --- CALLBACK FUNCTIONS --- 
 def reset_scores_and_matches():
     st.session_state.scores = {}
     st.session_state.completed_matches = []
@@ -86,17 +82,18 @@ st.markdown("""
         .block-container { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
         .stButton > button { width: 100% !important; }
     }
-    .pinned-header {
-        position: sticky; top: 0; background: #0e1117; z-index: 999;
-        padding: 10px; border-bottom: 2px solid #1a73e8; margin-bottom: 10px;
-    }
-    .team-chip {
-        display: inline-block; padding: 6px 14px; border-radius: 20px;
-        margin: 5px; font-weight: bold; font-size: 15px; border: 2px solid;
-    }
     .winner-text {
         color: #00ff00; font-weight: bold; font-size: 14px;
         text-align: center; margin: 5px 0;
+    }
+    .roster-box {
+        background-color: #1e212b; padding: 15px; border-radius: 10px; 
+        border: 1px solid #333; margin-bottom: 20px; text-align: center;
+    }
+    .team-badge {
+        display: inline-block; padding: 8px 16px; border-radius: 20px;
+        margin: 5px; font-weight: bold; font-size: 15px; border: 2px solid;
+        background-color: #0e1117;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -141,6 +138,22 @@ if not st.session_state.teams:
 
     st.stop()
 
+# ---------------- ASSIGN COLORS ----------------
+colors_palette = ["#FF6B6B", "#4D96FF", "#6BCB77", "#FFD93D", "#845EC2", "#FF9671", "#00C9A7", "#C34A36", "#F38181", "#95E1D3"]
+for i, team in enumerate(st.session_state.teams.keys()):
+    if team not in st.session_state.team_colors or st.session_state.team_colors[team] == "#FFFFFF":
+        st.session_state.team_colors[team] = colors_palette[i % len(colors_palette)]
+save_data() 
+
+# ---------------- TEAM ROSTER LEGEND ----------------
+st.markdown("<h3 style='text-align:center;'>🏷️ Team Roster & Colors</h3>", unsafe_allow_html=True)
+roster_html = "<div class='roster-box'>"
+for team, players in st.session_state.teams.items():
+    color = st.session_state.team_colors[team]
+    roster_html += f"<span class='team-badge' style='color:{color}; border-color:{color};'>{team}: {players[0]} & {players[1]}</span>"
+roster_html += "</div>"
+st.markdown(roster_html, unsafe_allow_html=True)
+
 # ---------------- LEADERBOARD & VISUALS ----------------
 stats = {t: {"P": 0, "W": 0, "L": 0, "Pts": 0, "RR": 0} for t in st.session_state.teams}
 for m_key, (s1, s2) in st.session_state.scores.items():
@@ -152,7 +165,6 @@ for m_key, (s1, s2) in st.session_state.scores.items():
     elif s2 > s1: 
         stats[t2]["W"] += 1; stats[t2]["Pts"] += 2; stats[t1]["L"] += 1
 
-# SORTING: Strictly by Points and Wins
 data_list = [{"Team": t, **v} for t, v in stats.items()]
 df = pd.DataFrame(data_list).sort_values(["Pts", "W"], ascending=False)
 
@@ -164,12 +176,24 @@ if not df.empty and df['Pts'].max() > 0:
         icons = ["🥇", "🥈", "🥉"]
         c.metric(f"{icons[i]} Rank {i+1}", top[i]['Team'], f"{top[i]['Pts']} Pts")
 
-    st.dataframe(
-        df.style.background_gradient(subset=['Pts'], cmap="Blues")
-                .background_gradient(subset=['W'], cmap="Greens")
-                .background_gradient(subset=['RR'], cmap="YlOrRd"),
-        use_container_width=True, hide_index=True
-    )
+    # This function colors the team names in the table based on their assigned color
+    def color_team_column(val):
+        color = st.session_state.team_colors.get(val, "white")
+        return f'color: {color}; font-weight: bold;'
+
+    # Apply the team colors AND the background gradients safely
+    try:
+        styled_df = df.style.map(color_team_column, subset=['Team']) \
+                            .background_gradient(subset=['Pts'], cmap="Blues") \
+                            .background_gradient(subset=['W'], cmap="Greens") \
+                            .background_gradient(subset=['RR'], cmap="YlOrRd")
+    except AttributeError: # Fallback for older versions of Pandas
+        styled_df = df.style.applymap(color_team_column, subset=['Team']) \
+                            .background_gradient(subset=['Pts'], cmap="Blues") \
+                            .background_gradient(subset=['W'], cmap="Greens") \
+                            .background_gradient(subset=['RR'], cmap="YlOrRd")
+
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 # ---------------- MATCH LOGIC ----------------
 team_names = list(st.session_state.teams.keys())
@@ -192,7 +216,6 @@ for r_idx, m_list in enumerate(rounds_list):
     if all(f"{t1}|{t2}" in st.session_state.completed_matches for (t1, t2) in m_list):
         completed_round_count = r_idx + 1
 
-# Finalist logic remains points-based
 if completed_round_count == len(rounds_list) - 1 and st.session_state.final_choice is None:
     st.warning("⚠️ **ALERT: DECISION REQUIRED!**")
     top_2 = df["Team"].tolist()[:2]
@@ -205,7 +228,7 @@ if completed_round_count == len(rounds_list) - 1 and st.session_state.final_choi
     st.stop()
 
 if not st.session_state.final_mode:
-    st.subheader("Match Entries")
+    st.subheader("🏸 Match Scoring Board")
     rk = st.session_state.reset_key
     for r_idx, matches in enumerate(rounds_list, 1):
         with st.expander(f"Round {r_idx}", expanded=(r_idx == completed_round_count + 1)):
@@ -215,24 +238,26 @@ if not st.session_state.final_mode:
                 val1, val2 = st.session_state.scores.get(m_key, [0, 0])
                 current_winner = (t1 if val1 > val2 else t2) if is_done else None
                 
-                # Fetch player names for display
-                p1 = st.session_state.teams[t1]
-                p2 = st.session_state.teams[t2]
-                t1_label = f"{t1} ({p1[0]} & {p1[1]})"
-                t2_label = f"{t2} ({p2[0]} & {p2[1]})"
+                p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
+                color_1 = st.session_state.team_colors.get(t1, "#FFF")
+                color_2 = st.session_state.team_colors.get(t2, "#FFF")
                 
-                # Update the expander title to include player names
-                expander_title = f"🏸 {t1_label} vs {t2_label}" if not is_done else f"✅ {t1} vs {t2} (:green[Winner: {current_winner}])"
+                expander_title = f"{t1} vs {t2}" if not is_done else f"✅ {t1} vs {t2} (Winner: {current_winner})"
                 
                 with st.expander(expander_title, expanded=not is_done):
+                    # Color-coded Match Header
+                    st.markdown(f"<div style='text-align:center; font-size:16px; margin-bottom: 10px; padding: 5px; background-color: #1a1c23; border-radius: 5px;'><span style='color:{color_1}; font-weight:bold;'>{t1} ({p1[0]} & {p1[1]})</span> <span style='color:#888;'>🆚</span> <span style='color:{color_2}; font-weight:bold;'>{t2} ({p2[0]} & {p2[1]})</span></div>", unsafe_allow_html=True)
+                    
                     c1, c2, c3 = st.columns([2, 2, 1])
-                    s1 = c1.number_input(t1_label, 0, key=f"s1_{m_key}_{rk}", value=val1)
-                    s2 = c2.number_input(t2_label, 0, key=f"s2_{m_key}_{rk}", value=val2)
-                    if c3.button("💾", key=f"sv_{m_key}_{rk}"):
+                    s1 = c1.number_input(f"{t1} Score", 0, key=f"s1_{m_key}_{rk}", value=val1, label_visibility="collapsed")
+                    s2 = c2.number_input(f"{t2} Score", 0, key=f"s2_{m_key}_{rk}", value=val2, label_visibility="collapsed")
+                    
+                    if c3.button("💾 Save", key=f"sv_{m_key}_{rk}", use_container_width=True):
                         st.session_state.scores[m_key] = [s1, s2]
                         if m_key not in st.session_state.completed_matches:
                             st.session_state.completed_matches.append(m_key)
                         save_data(); st.rerun()
+                    
                     if is_done:
                         st.markdown(f"<p class='winner-text'>Winner: {current_winner}</p>", unsafe_allow_html=True)
 
@@ -244,11 +269,9 @@ if st.session_state.final_mode:
     t1, t2 = top_2[0], top_2[1]
     p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
     
-    # Grab the unique colors for the finalist teams
     color_1 = st.session_state.team_colors.get(t1, "#4D96FF")
     color_2 = st.session_state.team_colors.get(t2, "#FF6B6B")
     
-    # Premium Color-Coded Banner
     st.markdown(f"""
     <div style='text-align:center; padding: 20px; background-color: #1a1c23; border: 1px solid #333; border-radius: 12px; margin-bottom: 25px; box-shadow: 0px 4px 10px rgba(0,0,0,0.5);'>
         <h2 style='margin: 0; font-size: 32px;'>
