@@ -215,10 +215,19 @@ if not st.session_state.final_mode:
                 val1, val2 = st.session_state.scores.get(m_key, [0, 0])
                 current_winner = (t1 if val1 > val2 else t2) if is_done else None
                 
-                with st.expander(f"🏸 {t1} vs {t2}" if not is_done else f"✅ {t1} vs {t2} (:green[Winner: {current_winner}])", expanded=not is_done):
+                # Fetch player names for display
+                p1 = st.session_state.teams[t1]
+                p2 = st.session_state.teams[t2]
+                t1_label = f"{t1} ({p1[0]} & {p1[1]})"
+                t2_label = f"{t2} ({p2[0]} & {p2[1]})"
+                
+                # Update the expander title to include player names
+                expander_title = f"🏸 {t1_label} vs {t2_label}" if not is_done else f"✅ {t1} vs {t2} (:green[Winner: {current_winner}])"
+                
+                with st.expander(expander_title, expanded=not is_done):
                     c1, c2, c3 = st.columns([2, 2, 1])
-                    s1 = c1.number_input(f"{t1}", 0, key=f"s1_{m_key}_{rk}", value=val1)
-                    s2 = c2.number_input(f"{t2}", 0, key=f"s2_{m_key}_{rk}", value=val2)
+                    s1 = c1.number_input(t1_label, 0, key=f"s1_{m_key}_{rk}", value=val1)
+                    s2 = c2.number_input(t2_label, 0, key=f"s2_{m_key}_{rk}", value=val2)
                     if c3.button("💾", key=f"sv_{m_key}_{rk}"):
                         st.session_state.scores[m_key] = [s1, s2]
                         if m_key not in st.session_state.completed_matches:
@@ -232,10 +241,15 @@ if st.session_state.final_mode:
     st.markdown("<h1 style='text-align:center;'>🏆 GRAND FINAL</h1>", unsafe_allow_html=True)
     top_2 = df["Team"].tolist()[:2]
     t1, t2 = top_2[0], top_2[1]
-    st.write(f"### {t1} vs {t2}")
+    p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
+    
+    # Beautifully display final teams with their players
+    st.markdown(f"<h3 style='text-align:center;'>{t1} ({p1[0]} & {p1[1]}) <br>vs<br> {t2} ({p2[0]} & {p2[1]})</h3>", unsafe_allow_html=True)
+    
     cx, cy = st.columns(2)
     fs1 = cx.number_input(f"{t1} Score", 0, key=f"fs1_{st.session_state.reset_key}")
     fs2 = cy.number_input(f"{t2} Score", 0, key=f"fs2_{st.session_state.reset_key}")
+    
     if st.button("Complete Tournament", type="primary", use_container_width=True):
         st.balloons()
         st.success(f"🏆 {t1 if fs1 > fs2 else t2} is the Champion! 🏆")
