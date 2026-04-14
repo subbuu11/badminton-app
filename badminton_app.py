@@ -236,6 +236,7 @@ if not st.session_state.final_mode:
                     if is_done:
                         st.markdown(f"<p class='winner-text'>Winner: {current_winner}</p>", unsafe_allow_html=True)
 
+# ---------------- FINAL MATCH ----------------
 if st.session_state.final_mode:
     st.divider()
     st.markdown("<h1 style='text-align:center;'>🏆 GRAND FINAL</h1>", unsafe_allow_html=True)
@@ -243,15 +244,33 @@ if st.session_state.final_mode:
     t1, t2 = top_2[0], top_2[1]
     p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
     
-    # Beautifully display final teams with their players
-    st.markdown(f"<h3 style='text-align:center;'>{t1} ({p1[0]} & {p1[1]}) <br>vs<br> {t2} ({p2[0]} & {p2[1]})</h3>", unsafe_allow_html=True)
+    # Grab the unique colors for the finalist teams
+    color_1 = st.session_state.team_colors.get(t1, "#4D96FF")
+    color_2 = st.session_state.team_colors.get(t2, "#FF6B6B")
+    
+    # Premium Color-Coded Banner
+    st.markdown(f"""
+    <div style='text-align:center; padding: 20px; background-color: #1a1c23; border: 1px solid #333; border-radius: 12px; margin-bottom: 25px; box-shadow: 0px 4px 10px rgba(0,0,0,0.5);'>
+        <h2 style='margin: 0; font-size: 32px;'>
+            <span style='color: {color_1}; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);'>{t1}</span> 
+            <span style='color: #888; font-size: 20px; margin: 0 15px;'>🆚</span> 
+            <span style='color: {color_2}; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);'>{t2}</span>
+        </h2>
+        <div style='margin-top: 12px; font-size: 18px; color: #eee;'>
+            <span style='border-bottom: 3px solid {color_1}; padding-bottom: 3px;'>{p1[0]} & {p1[1]}</span>
+            <span style='margin: 0 25px; color: #555;'>|</span>
+            <span style='border-bottom: 3px solid {color_2}; padding-bottom: 3px;'>{p2[0]} & {p2[1]}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     cx, cy = st.columns(2)
     fs1 = cx.number_input(f"{t1} Score", 0, key=f"fs1_{st.session_state.reset_key}")
     fs2 = cy.number_input(f"{t2} Score", 0, key=f"fs2_{st.session_state.reset_key}")
     
     if st.button("Complete Tournament", type="primary", use_container_width=True):
+        champ = t1 if fs1 > fs2 else t2
         st.balloons()
-        st.success(f"🏆 {t1 if fs1 > fs2 else t2} is the Champion! 🏆")
+        st.success(f"🏆 {champ} is the Champion! 🏆")
 
 st.markdown("<hr><div style='text-align:center; color:#888;'>Developed with ❤️ by <b>Subbiah S</b></div>", unsafe_allow_html=True)
