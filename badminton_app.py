@@ -194,7 +194,7 @@ if not df.empty and df['Pts'].max() > 0:
 
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-# ---------------- MATCH LOGIC ----------------
+# ---------------- MATCH LOGIC & MATHEMATICAL ELIMINATION ----------------
 team_names = list(st.session_state.teams.keys())
 def get_rounds(tnames):
     temp = tnames[:]
@@ -215,16 +215,40 @@ for r_idx, m_list in enumerate(rounds_list):
     if all(f"{t1}|{t2}" in st.session_state.completed_matches for (t1, t2) in m_list):
         completed_round_count = r_idx + 1
 
-if completed_round_count == len(rounds_list) - 1 and st.session_state.final_choice is None:
-    st.warning("⚠️ **ALERT: DECISION REQUIRED!**")
+remaining_rounds = len(rounds_list) - completed_round_count
+gate_triggered = False
+
+# THE FIX: Only trigger the pop-up if the 3rd place team has ZERO chance of catching up
+if remaining_rounds > 0 and len(df) >= 3 and st.session_state.final_choice is None:
+    p2_pts = df.iloc[1]['Pts']
+    p3_pts = df.iloc[2]['Pts']
+    
+    # 2 points are awarded per win. Calculate max possible points for 3rd place.
+    max_possible_p3_pts = p3_pts + (remaining_rounds * 2)
+    
+    # Only lock if 2nd place already has more points than 3rd place could EVER get
+    if p2_pts > max_possible_p3_pts:
+        gate_triggered = True
+
+if gate_triggered:
+    st.warning("⚠️ **ALERT: TOP 2 TEAMS MATHEMATICALLY LOCKED!**")
+    st.info("No other teams can score enough points to catch up, even if they win all their remaining matches.")
     top_2 = df["Team"].tolist()[:2]
-    st.write(f"Current Finalists: **{top_2[0]}** vs **{top_2[1]}**")
+    st.write(f"Locked Finalists: **{top_2[0]}** vs **{top_2[1]}**")
     ca, cb = st.columns(2)
-    if ca.button("GO TO FINAL NOW", type="primary"):
+    if ca.button("SKIP REMAINING & GO TO FINAL", type="primary"):
         st.session_state.final_choice = "FINAL"; st.session_state.final_mode = True; save_data(); st.rerun()
-    if cb.button("CONTINUE LAST ROUND"):
+    if cb.button("PLAY REMAINING MATCHES ANYWAY"):
         st.session_state.final_choice = "CONTINUE"; save_data(); st.rerun()
     st.stop()
+
+# Normal progression when all matches are completely finished
+if completed_round_count == len(rounds_list) and not st.session_state.final_mode:
+    st.success("✅ All league matches are complete!")
+    if st.button("PROCEED TO GRAND FINAL", type="primary", use_container_width=True):
+        st.session_state.final_mode = True
+        save_data()
+        st.rerun()
 
 if not st.session_state.final_mode:
     st.subheader("🏸 Match Scoring Board")
