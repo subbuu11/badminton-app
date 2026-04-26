@@ -14,6 +14,9 @@ DATA_FILE = "tournament_data.json"
 if "reset_key" not in st.session_state:
     st.session_state.reset_key = 0
 
+if "confirm_fast_track" not in st.session_state:
+    st.session_state.confirm_fast_track = False
+
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
@@ -23,7 +26,6 @@ def load_data():
                 st.session_state.scores = data.get("scores", {})
                 st.session_state.completed_matches = data.get("completed_matches", [])
                 st.session_state.final_mode = data.get("final_mode", False)
-                st.session_state.final_choice = data.get("final_choice", None)
                 st.session_state.team_colors = data.get("team_colors", {})
                 return True
             except json.JSONDecodeError:
@@ -36,7 +38,6 @@ def save_data():
         "scores": st.session_state.get("scores", {}),
         "completed_matches": st.session_state.get("completed_matches", []),
         "final_mode": st.session_state.get("final_mode", False),
-        "final_choice": st.session_state.get("final_choice", None),
         "team_colors": st.session_state.get("team_colors", {})
     }
     with open(DATA_FILE, "w") as f:
@@ -46,14 +47,14 @@ def reset_scores_and_matches():
     st.session_state.scores = {}
     st.session_state.completed_matches = []
     st.session_state.final_mode = False
-    st.session_state.final_choice = None
-    st.session_state.confirm_fast_track = False # Reset the warning button state
+    st.session_state.confirm_fast_track = False
     st.session_state.reset_key += 1 
     save_data()
 
 def hard_reset_all():
     st.session_state.clear()
     st.session_state.reset_key = 0
+    st.session_state.confirm_fast_track = False
     try:
         if os.path.exists(DATA_FILE):
             os.remove(DATA_FILE)
@@ -68,12 +69,7 @@ if "teams" not in st.session_state:
         st.session_state.scores = {}
         st.session_state.completed_matches = []
         st.session_state.final_mode = False
-        st.session_state.final_choice = None 
         st.session_state.team_colors = {}
-        st.session_state.confirm_fast_track = False
-
-if "confirm_fast_track" not in st.session_state:
-    st.session_state.confirm_fast_track = False
 
 # ---------------- SIDEBAR CONTROLS ----------------
 st.sidebar.header("⚙️ Data Management")
@@ -199,29 +195,29 @@ if not df.empty and df['Pts'].max() > 0:
 
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-# --- MANUAL FAST-TRACK BUTTON & WARNING ---
+# ---------------- MANUAL FAST-TRACK OVERRIDE ----------------
 if not st.session_state.final_mode and len(df) >= 2:
     st.markdown("<br>", unsafe_allow_html=True)
     
-    if st.button("⏭️ Fast-Track to Grand Final", use_container_width=True):
-        st.session_state.confirm_fast_track = True
-
-    if st.session_state.confirm_fast_track:
-        st.warning("⚠️ **WARNING:** This will immediately end the league phase and push the current Top 2 teams into the Grand Final. Are you sure you want to proceed?")
+    if not st.session_state.confirm_fast_track:
+        if st.button("⏭️ Fast-Track to Grand Final", use_container_width=True):
+            st.session_state.confirm_fast_track = True
+            st.rerun()
+    else:
+        st.warning("⚠️ **WARNING:** This will end the league and push the current Top 2 teams into the Grand Final. Are you sure?")
         c1, c2 = st.columns(2)
-        
         if c1.button("✅ Yes, Skip to Final", type="primary", use_container_width=True):
-            st.session_state.final_choice = "FINAL"
             st.session_state.final_mode = True
             st.session_state.confirm_fast_track = False
             save_data()
             st.rerun()
-            
         if c2.button("❌ Cancel", use_container_width=True):
             st.session_state.confirm_fast_track = False
             st.rerun()
+            
+    st.markdown("<hr>", unsafe_allow_html=True)
 
-# ---------------- MATCH LOGIC & MATHEMATICAL ELIMINATION ----------------
+# ---------------- MATCH LOGIC ----------------
 team_names = list(st.session_state.teams.keys())
 def get_rounds(tnames):
     temp = tnames[:]
@@ -242,70 +238,46 @@ for r_idx, m_list in enumerate(rounds_list):
     if all(f"{t1}|{t2}" in st.session_state.completed_matches for (t1, t2) in m_list):
         completed_round_count = r_idx + 1
 
-remaining_rounds = len(rounds_list) - completed_round_count
-gate_triggered = False
-
-# Only trigger the auto-popup if the 3rd place team has ZERO chance of catching up
-if remaining_rounds > 0 and len(df) >= 3 and st.session_state.final_choice is None:
-    p2_pts = df.iloc[1]['Pts']
-    p3_pts = df.iloc[2]['Pts']
-    max_possible_p3_pts = p3_pts + (remaining_rounds * 2)
-    
-    if p2_pts > max_possible_p3_pts:
-        gate_triggered = True
-
-if gate_triggered and not st.session_state.final_mode:
-    st.warning("⚠️ **ALERT: TOP 2 TEAMS MATHEMATICALLY LOCKED!**")
-    st.info("No other teams can score enough points to catch up, even if they win all their remaining matches.")
-    top_2 = df["Team"].tolist()[:2]
-    st.write(f"Locked Finalists: **{top_2[0]}** vs **{top_2[1]}**")
-    ca, cb = st.columns(2)
-    if ca.button("SKIP REMAINING & GO TO FINAL", type="primary", key="math_skip"):
-        st.session_state.final_choice = "FINAL"; st.session_state.final_mode = True; save_data(); st.rerun()
-    if cb.button("PLAY REMAINING MATCHES ANYWAY", key="math_cont"):
-        st.session_state.final_choice = "CONTINUE"; save_data(); st.rerun()
-    st.stop()
-
-# Normal progression when all matches are completely finished
-if completed_round_count == len(rounds_list) and not st.session_state.final_mode:
-    st.success("✅ All league matches are complete!")
-    if st.button("PROCEED TO GRAND FINAL", type="primary", use_container_width=True):
-        st.session_state.final_mode = True
-        save_data()
-        st.rerun()
-
 if not st.session_state.final_mode:
-    st.subheader("🏸 Match Scoring Board")
-    rk = st.session_state.reset_key
-    for r_idx, matches in enumerate(rounds_list, 1):
-        with st.expander(f"Round {r_idx}", expanded=(r_idx == completed_round_count + 1)):
-            for (t1, t2) in matches:
-                m_key = f"{t1}|{t2}"
-                is_done = m_key in st.session_state.completed_matches
-                val1, val2 = st.session_state.scores.get(m_key, [0, 0])
-                current_winner = (t1 if val1 > val2 else t2) if is_done else None
-                
-                p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
-                color_1 = st.session_state.team_colors.get(t1, "#FFF")
-                color_2 = st.session_state.team_colors.get(t2, "#FFF")
-                
-                expander_title = f"{t1} vs {t2}" if not is_done else f"✅ {t1} vs {t2} (Winner: {current_winner})"
-                
-                with st.expander(expander_title, expanded=not is_done):
-                    st.markdown(f"<div style='text-align:center; font-size:16px; margin-bottom: 10px; padding: 5px; background-color: #1a1c23; border-radius: 5px;'><span style='color:{color_1}; font-weight:bold;'>{t1} ({p1[0]} & {p1[1]})</span> <span style='color:#888;'>🆚</span> <span style='color:{color_2}; font-weight:bold;'>{t2} ({p2[0]} & {p2[1]})</span></div>", unsafe_allow_html=True)
+    # Normal progression when all matches are completely finished naturally
+    if completed_round_count == len(rounds_list):
+        st.success("✅ All league matches are complete!")
+        if st.button("PROCEED TO GRAND FINAL", type="primary", use_container_width=True):
+            st.session_state.final_mode = True
+            save_data()
+            st.rerun()
+    else:
+        st.subheader("🏸 Match Scoring Board")
+        rk = st.session_state.reset_key
+        for r_idx, matches in enumerate(rounds_list, 1):
+            with st.expander(f"Round {r_idx}", expanded=(r_idx == completed_round_count + 1)):
+                for (t1, t2) in matches:
+                    m_key = f"{t1}|{t2}"
+                    is_done = m_key in st.session_state.completed_matches
+                    val1, val2 = st.session_state.scores.get(m_key, [0, 0])
+                    current_winner = (t1 if val1 > val2 else t2) if is_done else None
                     
-                    c1, c2, c3 = st.columns([2, 2, 1])
-                    s1 = c1.number_input(f"{t1} Score", 0, key=f"s1_{m_key}_{rk}", value=val1, label_visibility="collapsed")
-                    s2 = c2.number_input(f"{t2} Score", 0, key=f"s2_{m_key}_{rk}", value=val2, label_visibility="collapsed")
+                    p1, p2 = st.session_state.teams[t1], st.session_state.teams[t2]
+                    color_1 = st.session_state.team_colors.get(t1, "#FFF")
+                    color_2 = st.session_state.team_colors.get(t2, "#FFF")
                     
-                    if c3.button("💾 Save", key=f"sv_{m_key}_{rk}", use_container_width=True):
-                        st.session_state.scores[m_key] = [s1, s2]
-                        if m_key not in st.session_state.completed_matches:
-                            st.session_state.completed_matches.append(m_key)
-                        save_data(); st.rerun()
+                    expander_title = f"{t1} vs {t2}" if not is_done else f"✅ {t1} vs {t2} (Winner: {current_winner})"
                     
-                    if is_done:
-                        st.markdown(f"<p class='winner-text'>Winner: {current_winner}</p>", unsafe_allow_html=True)
+                    with st.expander(expander_title, expanded=not is_done):
+                        st.markdown(f"<div style='text-align:center; font-size:16px; margin-bottom: 10px; padding: 5px; background-color: #1a1c23; border-radius: 5px;'><span style='color:{color_1}; font-weight:bold;'>{t1} ({p1[0]} & {p1[1]})</span> <span style='color:#888;'>🆚</span> <span style='color:{color_2}; font-weight:bold;'>{t2} ({p2[0]} & {p2[1]})</span></div>", unsafe_allow_html=True)
+                        
+                        c1, c2, c3 = st.columns([2, 2, 1])
+                        s1 = c1.number_input(f"{t1} Score", 0, key=f"s1_{m_key}_{rk}", value=val1, label_visibility="collapsed")
+                        s2 = c2.number_input(f"{t2} Score", 0, key=f"s2_{m_key}_{rk}", value=val2, label_visibility="collapsed")
+                        
+                        if c3.button("💾 Save", key=f"sv_{m_key}_{rk}", use_container_width=True):
+                            st.session_state.scores[m_key] = [s1, s2]
+                            if m_key not in st.session_state.completed_matches:
+                                st.session_state.completed_matches.append(m_key)
+                            save_data(); st.rerun()
+                        
+                        if is_done:
+                            st.markdown(f"<p class='winner-text'>Winner: {current_winner}</p>", unsafe_allow_html=True)
 
 # ---------------- FINAL MATCH ----------------
 if st.session_state.final_mode:
