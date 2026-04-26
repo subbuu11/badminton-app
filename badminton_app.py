@@ -47,6 +47,7 @@ def reset_scores_and_matches():
     st.session_state.completed_matches = []
     st.session_state.final_mode = False
     st.session_state.final_choice = None
+    st.session_state.confirm_fast_track = False # Reset the warning button state
     st.session_state.reset_key += 1 
     save_data()
 
@@ -69,6 +70,10 @@ if "teams" not in st.session_state:
         st.session_state.final_mode = False
         st.session_state.final_choice = None 
         st.session_state.team_colors = {}
+        st.session_state.confirm_fast_track = False
+
+if "confirm_fast_track" not in st.session_state:
+    st.session_state.confirm_fast_track = False
 
 # ---------------- SIDEBAR CONTROLS ----------------
 st.sidebar.header("⚙️ Data Management")
@@ -194,6 +199,28 @@ if not df.empty and df['Pts'].max() > 0:
 
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
+# --- MANUAL FAST-TRACK BUTTON & WARNING ---
+if not st.session_state.final_mode and len(df) >= 2:
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    if st.button("⏭️ Fast-Track to Grand Final", use_container_width=True):
+        st.session_state.confirm_fast_track = True
+
+    if st.session_state.confirm_fast_track:
+        st.warning("⚠️ **WARNING:** This will immediately end the league phase and push the current Top 2 teams into the Grand Final. Are you sure you want to proceed?")
+        c1, c2 = st.columns(2)
+        
+        if c1.button("✅ Yes, Skip to Final", type="primary", use_container_width=True):
+            st.session_state.final_choice = "FINAL"
+            st.session_state.final_mode = True
+            st.session_state.confirm_fast_track = False
+            save_data()
+            st.rerun()
+            
+        if c2.button("❌ Cancel", use_container_width=True):
+            st.session_state.confirm_fast_track = False
+            st.rerun()
+
 # ---------------- MATCH LOGIC & MATHEMATICAL ELIMINATION ----------------
 team_names = list(st.session_state.teams.keys())
 def get_rounds(tnames):
@@ -218,27 +245,24 @@ for r_idx, m_list in enumerate(rounds_list):
 remaining_rounds = len(rounds_list) - completed_round_count
 gate_triggered = False
 
-# THE FIX: Only trigger the pop-up if the 3rd place team has ZERO chance of catching up
+# Only trigger the auto-popup if the 3rd place team has ZERO chance of catching up
 if remaining_rounds > 0 and len(df) >= 3 and st.session_state.final_choice is None:
     p2_pts = df.iloc[1]['Pts']
     p3_pts = df.iloc[2]['Pts']
-    
-    # 2 points are awarded per win. Calculate max possible points for 3rd place.
     max_possible_p3_pts = p3_pts + (remaining_rounds * 2)
     
-    # Only lock if 2nd place already has more points than 3rd place could EVER get
     if p2_pts > max_possible_p3_pts:
         gate_triggered = True
 
-if gate_triggered:
+if gate_triggered and not st.session_state.final_mode:
     st.warning("⚠️ **ALERT: TOP 2 TEAMS MATHEMATICALLY LOCKED!**")
     st.info("No other teams can score enough points to catch up, even if they win all their remaining matches.")
     top_2 = df["Team"].tolist()[:2]
     st.write(f"Locked Finalists: **{top_2[0]}** vs **{top_2[1]}**")
     ca, cb = st.columns(2)
-    if ca.button("SKIP REMAINING & GO TO FINAL", type="primary"):
+    if ca.button("SKIP REMAINING & GO TO FINAL", type="primary", key="math_skip"):
         st.session_state.final_choice = "FINAL"; st.session_state.final_mode = True; save_data(); st.rerun()
-    if cb.button("PLAY REMAINING MATCHES ANYWAY"):
+    if cb.button("PLAY REMAINING MATCHES ANYWAY", key="math_cont"):
         st.session_state.final_choice = "CONTINUE"; save_data(); st.rerun()
     st.stop()
 
